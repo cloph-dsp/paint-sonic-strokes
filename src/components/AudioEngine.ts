@@ -23,6 +23,10 @@ export class AudioEngine {
   private isPlaying = false;
   private grainScheduler: number | null = null;
   private activeGrains: AudioBufferSourceNode[] = [];
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
+  private isRecording = false;
+  private recordingDestination: MediaStreamAudioDestinationNode | null = null;
 
   async initialize() {
     try {
@@ -30,6 +34,10 @@ export class AudioEngine {
       this.masterGain = this.audioContext.createGain();
       this.masterGain.gain.value = 0.3;
       this.masterGain.connect(this.audioContext.destination);
+
+      // Create recording destination
+      this.recordingDestination = this.audioContext.createMediaStreamDestination();
+      this.masterGain.connect(this.recordingDestination);
 
       // Create reverb
       this.reverb = this.audioContext.createConvolver();
@@ -80,7 +88,7 @@ export class AudioEngine {
     }
   }
 
-  createGrain(params: GrainParams, canvasWidth: number, canvasHeight: number) {
+  createGrain(params: GrainParams, canvasWidth: number, canvasHeight: number, brushSize: number = 10) {
     if (!this.audioContext || !this.audioBuffer || !this.isPlaying) return;
 
     const source = this.audioContext.createBufferSource();
@@ -96,14 +104,15 @@ export class AudioEngine {
     // Map Y position to pitch (0.5 to 2.0 playback rate)
     source.playbackRate.value = 0.5 + (params.pitch * 1.5);
     
-    // Apply color-based effects
-    this.applyColorEffect(filterNode, gainNode, params.color);
+    // Apply color-based effects and brush size modulation
+    this.applyColorEffect(filterNode, gainNode, params.color, brushSize);
     
-    // Grain envelope
+    // Grain envelope - larger brushes have longer envelope
+    const grainDuration = 0.05 + (brushSize / 50) * 0.1; // 50ms to 150ms
     const now = this.audioContext.currentTime;
     gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(0.1, now + 0.01);
-    gainNode.gain.linearRampToValueAtTime(0, now + 0.1);
+    gainNode.gain.linearRampToValueAtTime(0.1, now + grainDuration * 0.1);
+    gainNode.gain.linearRampToValueAtTime(0, now + grainDuration);
     
     // Connect audio graph
     source.connect(filterNode);
@@ -127,36 +136,85 @@ export class AudioEngine {
     };
   }
 
-  private applyColorEffect(filter: BiquadFilterNode, gain: GainNode, color: string) {
+  private applyColorEffect(filter: BiquadFilterNode, gain: GainNode, color: string, brushSize: number = 10) {
+    // Brush size modulates effects: larger = more wet/spacious, smaller = tighter/dry
+    const wetAmount = Math.min(brushSize / 30, 1); // 0 to 1 based on brush size
+    
     switch (color) {
       case 'electric-blue':
         filter.type = 'lowpass';
-        filter.frequency.value = 2000;
-        filter.Q.value = 5;
+        filter.frequency.value = 1000 + (wetAmount * 2000); // More open with larger brush
+        filter.Q.value = 5 + (wetAmount * 5);
         break;
       case 'neon-green':
         filter.type = 'bandpass';
-        filter.frequency.value = 800;
-        filter.Q.value = 10;
+        filter.frequency.value = 600 + (wetAmount * 400);
+        filter.Q.value = 8 + (wetAmount * 4);
         break;
       case 'hot-pink':
         filter.type = 'highpass';
-        filter.frequency.value = 1000;
-        gain.gain.value *= 0.7; // Softer for reverb
+        filter.frequency.value = 1000 - (wetAmount * 300);
+        gain.gain.value *= (0.5 + wetAmount * 0.3); // Louder with larger brush
         break;
       case 'cyber-orange':
         filter.type = 'notch';
-        filter.frequency.value = 1500;
+        filter.frequency.value = 1200 + (wetAmount * 600);
+        filter.Q.value = 3 + (wetAmount * 7);
         break;
       case 'violet-glow':
         filter.type = 'peaking';
-        filter.frequency.value = 400;
-        filter.Q.value = 3;
-        filter.gain.value = 6;
+        filter.frequency.value = 300 + (wetAmount * 200);
+        filter.Q.value = 2 + (wetAmount * 3);
+        filter.gain.value = 4 + (wetAmount * 4);
         break;
       default:
         filter.type = 'allpass';
     }
+  }
+
+  setVolume(volume: number) {
+    if (this.masterGain) {
+      this.masterGain.gain.value = volume;
+    }
+  }
+
+  startRecording(): boolean {
+    if (!this.recordingDestination || this.isRecording) return false;
+
+    try {
+      this.recordedChunks = [];
+      this.mediaRecorder = new MediaRecorder(this.recordingDestination.stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.start();
+      this.isRecording = true;
+      return true;
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      return false;
+    }
+  }
+
+  stopRecording(): Blob | null {
+    if (!this.mediaRecorder || !this.isRecording) return null;
+
+    this.mediaRecorder.stop();
+    this.isRecording = false;
+
+    const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+    this.recordedChunks = [];
+    return blob;
+  }
+
+  isCurrentlyRecording(): boolean {
+    return this.isRecording;
   }
 
   start() {

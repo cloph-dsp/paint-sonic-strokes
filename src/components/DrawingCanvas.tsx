@@ -6,9 +6,10 @@ interface DrawingCanvasProps {
   activeColor: string;
   isPlaying: boolean;
   onClear: number; // Changed to number to track clear trigger
+  brushSize?: number;
 }
 
-export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear, brushSize = 15 }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
   const animationRef = useRef<number>();
@@ -101,7 +102,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear }: 
       color: point.color,
     };
 
-    audioEngine.createGrain(params, canvas.width, canvas.height);
+    audioEngine.createGrain(params, canvas.width, canvas.height, brushSize);
   };
 
   const drawLine = (fromPoint: DrawPoint, toPoint: DrawPoint) => {
@@ -110,9 +111,9 @@ export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear }: 
 
     const color = getColorHSL(fromPoint.color);
     
-    // Dynamic line width based on speed
-    const baseWidth = 2;
-    const speedWidth = Math.min(fromPoint.speed * 0.05, 8);
+    // Dynamic line width based on speed and brush size
+    const baseWidth = brushSize * 0.2;
+    const speedWidth = Math.min(fromPoint.speed * 0.05, brushSize * 0.4);
     const lineWidth = baseWidth + speedWidth;
 
     context.strokeStyle = color;

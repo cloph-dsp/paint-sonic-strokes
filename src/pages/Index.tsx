@@ -4,6 +4,7 @@ import { DrawingCanvas } from '@/components/DrawingCanvas';
 import { Controls } from '@/components/Controls';
 import { ColorPalette } from '@/components/ColorPalette';
 import { FileDropZone } from '@/components/FileDropZone';
+import { StatusDisplay } from '@/components/StatusDisplay';
 import { AudioEngine } from '@/components/AudioEngine';
 
 const Index = () => {
@@ -14,6 +15,10 @@ const Index = () => {
   const [activeColor, setActiveColor] = useState('electric-blue');
   const [clearTrigger, setClearTrigger] = useState(0);
   const [showDropZone, setShowDropZone] = useState(true);
+  const [volume, setVolume] = useState(0.3);
+  const [brushSize, setBrushSize] = useState(15);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
 
   useEffect(() => {
     const initializeAudio = async () => {
@@ -67,6 +72,43 @@ const Index = () => {
     toast.info('Undo functionality coming soon!');
   };
 
+  const handleVolumeChange = (newVolume: number) => {
+    setVolume(newVolume);
+    audioEngineRef.current.setVolume(newVolume);
+  };
+
+  const handleStartRecording = () => {
+    const success = audioEngineRef.current.startRecording();
+    if (success) {
+      setIsRecording(true);
+      toast.success('Recording started! Draw and your sounds will be captured.');
+    } else {
+      toast.error('Failed to start recording. Please try again.');
+    }
+  };
+
+  const handleStopRecording = () => {
+    const blob = audioEngineRef.current.stopRecording();
+    if (blob) {
+      setIsRecording(false);
+      setRecordingBlob(blob);
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `draw-your-sound-${Date.now()}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Recording saved! File downloaded.');
+    } else {
+      toast.error('Failed to save recording.');
+    }
+  };
+
   // Drag and drop for the entire window
   useEffect(() => {
     const handleWindowDrop = (event: DragEvent) => {
@@ -100,6 +142,7 @@ const Index = () => {
         activeColor={activeColor}
         isPlaying={isPlaying}
         onClear={clearTrigger}
+        brushSize={brushSize}
       />
       
       {/* UI Overlay */}
@@ -113,6 +156,13 @@ const Index = () => {
             onUndo={handleUndo}
             onFileLoad={handleFileLoad}
             hasAudioBuffer={hasAudioBuffer}
+            volume={volume}
+            onVolumeChange={handleVolumeChange}
+            brushSize={brushSize}
+            onBrushSizeChange={setBrushSize}
+            isRecording={isRecording}
+            onStartRecording={handleStartRecording}
+            onStopRecording={handleStopRecording}
           />
         </div>
         
@@ -128,6 +178,13 @@ const Index = () => {
       <FileDropZone
         onFileLoad={handleFileLoad}
         isVisible={showDropZone && !hasAudioBuffer}
+      />
+
+      {/* Status Display */}
+      <StatusDisplay
+        brushSize={brushSize}
+        activeColor={activeColor}
+        isVisible={hasAudioBuffer && !showDropZone}
       />
 
       {/* Title/Branding */}
