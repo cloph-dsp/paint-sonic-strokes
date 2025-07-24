@@ -29,6 +29,8 @@ const Index = () => {
   // Grain and delay subdivisions
   const [grainSub, setGrainSub] = useState(4);
   const [delaySub, setDelaySub] = useState(2);
+  // Grid toggle state
+  const [showGrid, setShowGrid] = useState(true);
   const defaultBrush = 15;
 
   // Update AudioEngine with tempo sync toggle and BPM changes
@@ -143,7 +145,7 @@ const Index = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `draw-your-sound-${Date.now()}.webm`;
+      a.download = `draw-your-sound-${Date.now()}.wav`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -188,6 +190,7 @@ const Index = () => {
         onClear={clearTrigger}
         undoTrigger={undoTrigger}
         brushSize={brushSize}
+        showGrid={showGrid}
       />
       
       {/* UI Overlay */}
@@ -212,6 +215,8 @@ const Index = () => {
           onGrainSubChange={setGrainSub}
           delaySub={delaySub}
           onDelaySubChange={setDelaySub}
+          gridOn={showGrid}
+          onGridToggle={setShowGrid}
         />
         <ColorPalette
           activeColor={activeColor}
@@ -301,6 +306,13 @@ const Index = () => {
                     <div>
                       <h4 className="font-semibold">Undo & Clear</h4>
                       <p className="text-sm text-muted-foreground">U to undo last stroke; C to clear canvas; or use controls</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Keyboard className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Pitch Snap</h4>
+                      <p className="text-sm text-muted-foreground">Hold Shift while drawing to snap pitch to nearest grid line</p>
                     </div>
                   </div>
                 </div>

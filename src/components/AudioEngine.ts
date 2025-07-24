@@ -60,8 +60,10 @@ export class AudioEngine {
 
       // Create reverb with initial decay based on BPM
       this.reverb = this.audioContext.createConvolver();
-      const initialDecay = 60 / this.bpm;
+      const initialDecay = 2; // default reverb tail in seconds
       this.reverb.buffer = await this.createReverbImpulse(initialDecay);
+      // Connect reverb output to master gain
+      this.reverb.connect(this.masterGain!);
       
       // Create delay
       this.delay = this.audioContext.createDelay(1.0);
@@ -158,8 +160,8 @@ export class AudioEngine {
     if (params.color === 'reverse-grain') {
       gainNode.connect(this.masterGain!);
     } else if (params.color === 'hot-pink' || params.color === 'violet-glow') {
+      // Send through reverb (connected to master in initialize)
       gainNode.connect(this.reverb!);
-      this.reverb!.connect(this.masterGain!);
       // Free mode: dynamic reverb decay
       if (!this.tempoSyncOn && this.audioContext) {
         const decayBase = 2;

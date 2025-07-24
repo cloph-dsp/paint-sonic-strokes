@@ -7,9 +7,10 @@ interface DrawingCanvasProps {
   onClear: number; // Changed to number to track clear trigger
   brushSize?: number;
   undoTrigger?: number;
+  showGrid: boolean;
 }
 
-export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, brushSize = 15 }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, brushSize = 15, showGrid }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
   const animationRef = useRef<number>();
@@ -18,75 +19,44 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
   const [currentStroke, setCurrentStroke] = useState<DrawPoint[]>([]);
   const lastPointRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  useEffect(() => {
+  // Pitch grid drawing utilities
+  const semitoneSteps = 12;
+  const drawPitchGrid = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
-    // Set canvas size to window size
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      
-      // Configure drawing context
-      context.lineCap = 'round';
-      context.lineJoin = 'round';
-      context.globalCompositeOperation = 'screen'; // Additive blending for glow effect
-    };
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    contextRef.current = context;
-
-    return () => {
-      window.removeEventListener('resize', resizeCanvas);
-    };
-  }, []);
-
-  // Clear canvas effect
-  useEffect(() => {
-    if (onClear) {
-      const canvas = canvasRef.current;
-      const context = contextRef.current;
-      if (canvas && context) {
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        setStrokes([]);
-        setCurrentStroke([]);
+    const ctx = contextRef.current;
+    if (!canvas || !ctx) return;
+    const { width, height } = canvas;
+    const centerY = height / 2;
+    const stepHeight = height / (2 * semitoneSteps);
+    ctx.save();
+    for (let i = -semitoneSteps; i <= semitoneSteps; i++) {
+      const y = centerY - i * stepHeight;
+      ctx.beginPath();
+      if (i === 0) {
+        ctx.strokeStyle = 'rgba(200,200,200,0.6)';
+        ctx.lineWidth = 2;
+      } else {
+        ctx.strokeStyle = 'rgba(200,200,200,0.3)';
+        ctx.lineWidth = 1;
       }
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(200,200,200,0.5)';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(i === 0 ? '0' : (i > 0 ? `+${i}` : `${i}`), 10, y - 4);
     }
-  }, [onClear]);
-
-  // Undo last stroke effect
-  useEffect(() => {
-    if (undoTrigger && contextRef.current && canvasRef.current) {
-      const context = contextRef.current;
-      const canvas = canvasRef.current;
-      // Remove last stroke
-      const newStrokes = strokes.slice(0, -1);
-      setStrokes(newStrokes);
-      // Clear canvas
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      // Redraw remaining strokes
-      newStrokes.forEach(stroke => {
-        for (let i = 1; i < stroke.length; i++) {
-          drawLine(stroke[i - 1], stroke[i]);
-        }
-      });
-    }
-  }, [undoTrigger]);
-
-  const getColorHSL = (colorName: string): string => {
-    const colorMap: Record<string, string> = {
-      'electric-blue': 'hsl(193, 100%, 50%)',
-      'neon-green': 'hsl(120, 100%, 50%)',
-      'hot-pink': 'hsl(320, 100%, 60%)',
-      'cyber-orange': 'hsl(30, 100%, 60%)',
-      'violet-glow': 'hsl(280, 100%, 70%)',
-      'reverse-grain': 'hsl(60, 100%, 70%)', // Neon yellow for reverse-grain
-    };
-    return colorMap[colorName] || colorMap['electric-blue'];
+    ctx.restore();
+  }, []);
+  // Snap Y coordinate to nearest semitone line
+  const getSnappedY = (y: number): number => {
+    const canvas = canvasRef.current;
+    if (!canvas) return y;
+    const height = canvas.height;
+    const centerY = height / 2;
+    const stepHeight = height / (2 * semitoneSteps);
+    const semitoneIndex = Math.round((centerY - y) / stepHeight);
+    return centerY - semitoneIndex * stepHeight;
   };
 
   const calculateSpeed = (currentPoint: { x: number; y: number }, timestamp: number): number => {
@@ -147,6 +117,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     context.stroke();
   };
 
+
   const getEventPoint = (event: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
@@ -157,32 +128,44 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     return null;
   };
 
-  // Native pointer start handler
+  // Native pointer start handler with optional Y snapping
   const handlePointerDown = useCallback((e: PointerEvent) => {
     const canvas = canvasRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
+    const x = rawX;
+    const y = e.shiftKey ? getSnappedY(rawY) : rawY;
     setIsDrawing(true);
     const drawPoint = createDrawPoint(x, y);
     setCurrentStroke([drawPoint]);
     triggerGrain(drawPoint);
-  }, [activeColor]);
+  }, [activeColor, getSnappedY]);
 
-  // Native pointer move handler
+  // Native pointer move handler with optional Y snapping
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
+    const x = rawX;
+    const y = e.shiftKey ? getSnappedY(rawY) : rawY;
     const drawPoint = createDrawPoint(x, y);
     setCurrentStroke(prev => {
-      if (prev.length > 0) drawLine(prev[prev.length - 1], drawPoint);
+      if (prev.length > 0) {
+        const fromPoint = prev[prev.length - 1];
+        if (e.shiftKey) {
+          // horizontal snap: override fromPoint y to snapped y
+          drawLine({ ...fromPoint, y }, drawPoint);
+        } else {
+          drawLine(fromPoint, drawPoint);
+        }
+      }
       return [...prev, drawPoint];
     });
     triggerGrain(drawPoint);
-  }, [isDrawing, activeColor]);
+  }, [isDrawing, activeColor, getSnappedY]);
 
   // Native pointer up handler
   const handlePointerUp = useCallback(() => {
@@ -221,7 +204,66 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     };
   }, []);
 
-  // Remove global pointer listeners: attach events directly to canvas
+  const getColorHSL = (colorName: string): string => {
+    const colorMap: Record<string, string> = {
+      'electric-blue': 'hsl(193, 100%, 50%)',
+      'neon-green': 'hsl(120, 100%, 50%)',
+      'hot-pink': 'hsl(320, 100%, 60%)',
+      'cyber-orange': 'hsl(30, 100%, 60%)',
+      'violet-glow': 'hsl(280, 100%, 70%)',
+      'reverse-grain': 'hsl(60, 100%, 70%)', // Neon yellow for reverse-grain
+    };
+    return colorMap[colorName] || colorMap['electric-blue'];
+  };
+
+  const redrawCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = contextRef.current;
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (showGrid) drawPitchGrid();
+    strokes.forEach(stroke => {
+      for (let i = 1; i < stroke.length; i++) {
+        drawLine(stroke[i - 1], stroke[i]);
+      }
+    });
+  }, [drawPitchGrid, strokes]);
+
+  // Resize canvas and redraw grid & strokes on window resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const handleResize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalCompositeOperation = 'screen';
+      contextRef.current = ctx;
+      redrawCanvas();
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [redrawCanvas]);
+
+  // Clear canvas effect with grid redraw
+  useEffect(() => {
+    if (onClear) {
+      setStrokes([]);
+      setCurrentStroke([]);
+      redrawCanvas();
+    }
+  }, [onClear, redrawCanvas]);
+
+  // Undo last stroke effect with grid redraw
+  useEffect(() => {
+    if (undoTrigger) {
+      setStrokes(prev => prev.slice(0, -1));
+      redrawCanvas();
+    }
+  }, [undoTrigger, redrawCanvas]);
 
 
   return (

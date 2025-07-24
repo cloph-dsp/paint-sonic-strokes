@@ -26,6 +26,8 @@ interface ControlsProps {
   onGrainSubChange: (sub: number) => void;
   delaySub: number;
   onDelaySubChange: (sub: number) => void;
+  gridOn: boolean;
+  onGridToggle: (on: boolean) => void;
 }
 
 export const Controls = ({
@@ -47,7 +49,9 @@ export const Controls = ({
   grainSub,
   onGrainSubChange,
   delaySub,
-  onDelaySubChange
+  onDelaySubChange,
+  gridOn,
+  onGridToggle
 }: ControlsProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,7 +88,7 @@ export const Controls = ({
             ) : (
               <Button
                 onClick={onStopRecording}
-                className="bg-red-500 hover:bg-red-600 text-white shadow-lg transition-all duration-300 animate-pulse"
+                className="pointer-events-auto bg-red-500 hover:bg-red-600 text-white shadow-lg transition-all duration-300 animate-pulse"
               >
                 <MicOff className="w-4 h-4" />
               </Button>
@@ -164,6 +168,15 @@ export const Controls = ({
               className="flex-1 pointer-events-auto"
             />
             <span className="text-xs text-muted-foreground min-w-[30px]">{brushSize}px</span>
+          </div>
+          {/* Grid Toggle */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground font-medium min-w-[40px]">GRID</span>
+            <Switch
+              className="pointer-events-auto"
+              checked={gridOn}
+              onCheckedChange={() => onGridToggle(!gridOn)}
+            />
           </div>
         </div>
       </Card>
