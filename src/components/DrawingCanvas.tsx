@@ -4,12 +4,12 @@ import { AudioEngine, DrawPoint, GrainParams } from './AudioEngine';
 interface DrawingCanvasProps {
   audioEngine: AudioEngine;
   activeColor: string;
-  isPlaying: boolean;
   onClear: number; // Changed to number to track clear trigger
   brushSize?: number;
+  undoTrigger?: number;
 }
 
-export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear, brushSize = 15 }: DrawingCanvasProps) => {
+export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, brushSize = 15 }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
   const animationRef = useRef<number>();
@@ -58,6 +58,25 @@ export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear, br
     }
   }, [onClear]);
 
+  // Undo last stroke effect
+  useEffect(() => {
+    if (undoTrigger && contextRef.current && canvasRef.current) {
+      const context = contextRef.current;
+      const canvas = canvasRef.current;
+      // Remove last stroke
+      const newStrokes = strokes.slice(0, -1);
+      setStrokes(newStrokes);
+      // Clear canvas
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      // Redraw remaining strokes
+      newStrokes.forEach(stroke => {
+        for (let i = 1; i < stroke.length; i++) {
+          drawLine(stroke[i - 1], stroke[i]);
+        }
+      });
+    }
+  }, [undoTrigger]);
+
   const getColorHSL = (colorName: string): string => {
     const colorMap: Record<string, string> = {
       'electric-blue': 'hsl(193, 100%, 50%)',
@@ -65,6 +84,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear, br
       'hot-pink': 'hsl(320, 100%, 60%)',
       'cyber-orange': 'hsl(30, 100%, 60%)',
       'violet-glow': 'hsl(280, 100%, 70%)',
+      'reverse-grain': 'hsl(60, 100%, 70%)', // Neon yellow for reverse-grain
     };
     return colorMap[colorName] || colorMap['electric-blue'];
   };
@@ -156,10 +176,8 @@ export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear, br
     const drawPoint = createDrawPoint(point.x, point.y);
     setCurrentStroke([drawPoint]);
     
-    if (isPlaying) {
-      triggerGrain(drawPoint);
-    }
-  }, [activeColor, isPlaying]);
+    triggerGrain(drawPoint);
+  }, [activeColor]);
 
   const draw = useCallback((event: React.MouseEvent | React.TouchEvent) => {
     event.preventDefault();
@@ -181,10 +199,8 @@ export const DrawingCanvas = ({ audioEngine, activeColor, isPlaying, onClear, br
       return newStroke;
     });
 
-    if (isPlaying) {
-      triggerGrain(drawPoint);
-    }
-  }, [isDrawing, activeColor, isPlaying]);
+    triggerGrain(drawPoint);
+  }, [isDrawing, activeColor]);
 
   const stopDrawing = useCallback(() => {
     if (!isDrawing) return;

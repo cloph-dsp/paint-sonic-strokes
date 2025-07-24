@@ -40,6 +40,7 @@
     --hot-pink: 320 100% 60%;
     --cyber-orange: 30 100% 60%;
     --violet-glow: 280 100% 70%;
+    --reverse-grain: 54 100% 60%;
 
     /* Gradients for electronic feel */
     --gradient-primary: linear-gradient(135deg, hsl(var(--electric-blue)), hsl(var(--violet-glow)));
@@ -55,8 +56,8 @@
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-glow: box-shadow 0.3s ease;
 
-    --radius: 0.5rem;
-
+    --violet-glow: 280 100% 70%;
+    --reverse-grain: 60 100% 70%; /* Neon Yellow for reverse granular mode */
     --sidebar-background: 0 0% 98%;
 
     --sidebar-foreground: 240 5.3% 26.1%;

@@ -13,6 +13,7 @@ const colors = [
   { name: 'hot-pink', label: 'Ambient', effect: 'Reverb + Highpass' },
   { name: 'cyber-orange', label: 'Echo', effect: 'Delay + Notch' },
   { name: 'violet-glow', label: 'Boost', effect: 'Peaking EQ + Reverb' },
+  { name: 'reverse-grain', label: 'Reverse', effect: 'Reverse Granular' },
 ];
 
 export const ColorPalette = ({ activeColor, onColorChange }: ColorPaletteProps) => {
@@ -29,7 +30,7 @@ export const ColorPalette = ({ activeColor, onColorChange }: ColorPaletteProps) 
                 "w-full justify-start text-left h-auto p-3 transition-all duration-300",
                 "border border-border/50 hover:border-border",
                 activeColor === color.name 
-                  ? "bg-accent text-accent-foreground shadow-[var(--glow-accent)] scale-105" 
+                  ? "bg-accent text-white shadow-[var(--glow-accent)] scale-105" 
                   : "bg-secondary/50 hover:bg-secondary/80 text-secondary-foreground"
               )}
               style={{

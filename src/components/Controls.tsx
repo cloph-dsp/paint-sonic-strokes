@@ -1,13 +1,10 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Play, Square, RotateCcw, Upload, Trash2, Mic, MicOff, Download } from 'lucide-react';
+import { RotateCcw, Upload, Trash2, Mic, MicOff } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 interface ControlsProps {
-  isPlaying: boolean;
-  onPlay: () => void;
-  onStop: () => void;
   onClear: () => void;
   onUndo: () => void;
   onFileLoad: (file: File) => void;
@@ -22,9 +19,6 @@ interface ControlsProps {
 }
 
 export const Controls = ({
-  isPlaying,
-  onPlay,
-  onStop,
   onClear,
   onUndo,
   onFileLoad,
@@ -56,25 +50,7 @@ export const Controls = ({
       <Card className="p-4 bg-card/80 backdrop-blur-md border-border/50 shadow-2xl">
         <div className="flex items-center gap-3">
           {/* Play/Stop Controls */}
-          <div className="flex gap-2">
-            {!isPlaying ? (
-              <Button
-                onClick={onPlay}
-                disabled={!hasAudioBuffer}
-                className="bg-primary hover:bg-primary/80 text-primary-foreground shadow-lg transition-all duration-300 hover:shadow-[var(--glow-primary)]"
-              >
-                <Play className="w-4 h-4" />
-              </Button>
-            ) : (
-              <Button
-                onClick={onStop}
-                variant="destructive"
-                className="shadow-lg transition-all duration-300"
-              >
-                <Square className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
+          {/* Play/Stop removed: audio plays by default */}
 
           {/* Recording Controls */}
           <div className="flex gap-2">

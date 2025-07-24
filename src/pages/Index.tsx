@@ -10,15 +10,43 @@ import { AudioEngine } from '@/components/AudioEngine';
 const Index = () => {
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const [isAudioInitialized, setIsAudioInitialized] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [hasAudioBuffer, setHasAudioBuffer] = useState(false);
   const [activeColor, setActiveColor] = useState('electric-blue');
   const [clearTrigger, setClearTrigger] = useState(0);
+  const [undoTrigger, setUndoTrigger] = useState(0);
   const [showDropZone, setShowDropZone] = useState(true);
   const [volume, setVolume] = useState(0.3);
   const [brushSize, setBrushSize] = useState(15);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
+
+  // Keyboard shortcuts: 1-6 colors, ArrowUp/Down brush size, R toggle recording
+  useEffect(() => {
+    const colorList = ['electric-blue','neon-green','hot-pink','cyber-orange','violet-glow','reverse-grain'];
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key;
+      if (key >= '1' && key <= '6') {
+        const idx = parseInt(key, 10) - 1;
+        setActiveColor(colorList[idx]);
+        e.preventDefault();
+      } else if (key === 'ArrowUp') {
+        setBrushSize(prev => prev + 1);
+        e.preventDefault();
+      } else if (key === 'ArrowDown') {
+        setBrushSize(prev => Math.max(1, prev - 1));
+        e.preventDefault();
+      } else if (key === 'r' || key === 'R') {
+        if (!isRecording) {
+          handleStartRecording();
+        } else {
+          handleStopRecording();
+        }
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRecording]);
 
   useEffect(() => {
     const initializeAudio = async () => {
@@ -39,28 +67,14 @@ const Index = () => {
     if (success) {
       setHasAudioBuffer(true);
       setShowDropZone(false);
-      toast.success(`Loaded: ${file.name}. Click play and start drawing!`);
+      // Auto-start audio playback
+      audioEngineRef.current.start();
+      toast.success(`Loaded: ${file.name}. Draw to create sound! Different colors = different effects.`);
     } else {
       toast.error('Failed to load audio file. Please try a different format.');
     }
   };
 
-  const handlePlay = () => {
-    if (!hasAudioBuffer) {
-      toast.error('Please load an audio sample first.');
-      return;
-    }
-    
-    audioEngineRef.current.start();
-    setIsPlaying(true);
-    toast.success('Draw to create sound! Different colors = different effects.');
-  };
-
-  const handleStop = () => {
-    audioEngineRef.current.stop();
-    setIsPlaying(false);
-    toast.info('Playback stopped.');
-  };
 
   const handleClear = () => {
     setClearTrigger(prev => prev + 1);
@@ -68,8 +82,9 @@ const Index = () => {
   };
 
   const handleUndo = () => {
-    // This would require more complex stroke management
-    toast.info('Undo functionality coming soon!');
+    // Trigger undo of last stroke
+    setUndoTrigger(prev => prev + 1);
+    toast.info('Last stroke undone.');
   };
 
   const handleVolumeChange = (newVolume: number) => {
@@ -87,12 +102,11 @@ const Index = () => {
     }
   };
 
-  const handleStopRecording = () => {
-    const blob = audioEngineRef.current.stopRecording();
+  const handleStopRecording = async () => {
+    const blob = await audioEngineRef.current.stopRecording();
     if (blob) {
       setIsRecording(false);
       setRecordingBlob(blob);
-      
       // Create download link
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -102,7 +116,6 @@ const Index = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
       toast.success('Recording saved! File downloaded.');
     } else {
       toast.error('Failed to save recording.');
@@ -140,18 +153,15 @@ const Index = () => {
       <DrawingCanvas
         audioEngine={audioEngineRef.current}
         activeColor={activeColor}
-        isPlaying={isPlaying}
         onClear={clearTrigger}
+        undoTrigger={undoTrigger}
         brushSize={brushSize}
       />
       
       {/* UI Overlay */}
       <div className="relative z-10 pointer-events-none">
         <div className="pointer-events-auto">
-          <Controls
-            isPlaying={isPlaying}
-            onPlay={handlePlay}
-            onStop={handleStop}
+        <Controls
             onClear={handleClear}
             onUndo={handleUndo}
             onFileLoad={handleFileLoad}
@@ -188,7 +198,7 @@ const Index = () => {
       />
 
       {/* Title/Branding */}
-      {!isPlaying && (
+      {!hasAudioBuffer && (
         <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10">
           <div className="text-center">
             <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -200,6 +210,20 @@ const Index = () => {
           </div>
         </div>
       )}
+
+      {/* Shortcut Legend */}
+      <div className="fixed bottom-4 left-4 z-20 p-2 bg-black bg-opacity-50 text-white text-xs rounded pointer-events-none">
+        <div className="font-semibold mb-1">Shortcuts:</div>
+        <div>1: Electric Blue</div>
+        <div>2: Neon Green</div>
+        <div>3: Hot Pink</div>
+        <div>4: Cyber Orange</div>
+        <div>5: Violet Glow</div>
+        <div>6: Reverse Grain</div>
+        <div className="mt-1">↑: Increase Brush Size</div>
+        <div>↓: Decrease Brush Size</div>
+        <div>R: Toggle Recording</div>
+      </div>
     </div>
   );
 };

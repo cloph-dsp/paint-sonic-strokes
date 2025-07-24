@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Upload, Music } from 'lucide-react';
 
@@ -9,6 +9,7 @@ interface FileDropZoneProps {
 
 export const FileDropZone = ({ onFileLoad, isVisible }: FileDropZoneProps) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -18,7 +19,7 @@ export const FileDropZone = ({ onFileLoad, isVisible }: FileDropZoneProps) => {
     const audioFile = files.find(file => file.type.startsWith('audio/'));
     
     if (audioFile) {
-      onFileLoad(audioFile);
+      onFileLoad(audioFile as File);
     }
   }, [onFileLoad]);
 
@@ -32,6 +33,17 @@ export const FileDropZone = ({ onFileLoad, isVisible }: FileDropZoneProps) => {
     setIsDragOver(false);
   }, []);
 
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('audio/')) {
+      onFileLoad(file);
+    }
+  };
+
+  const handleClick = () => {
+    fileInputRef.current?.click();
+  };
+
   if (!isVisible) return null;
 
   return (
@@ -42,7 +54,7 @@ export const FileDropZone = ({ onFileLoad, isVisible }: FileDropZoneProps) => {
         
         {/* Main upload area */}
         <Card 
-          className={`absolute inset-0 m-8 flex items-center justify-center bg-background/95 backdrop-blur-xl border-2 border-dashed transition-all duration-500 ${
+          className={`absolute inset-0 m-8 flex items-center justify-center bg-background/95 backdrop-blur-xl border-2 border-dashed transition-all duration-500 cursor-pointer ${
             isDragOver 
               ? 'border-primary bg-primary/10 shadow-[0_0_50px_var(--primary)] scale-105' 
               : 'border-border/50 hover:border-primary/50'
@@ -50,7 +62,15 @@ export const FileDropZone = ({ onFileLoad, isVisible }: FileDropZoneProps) => {
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
+          onClick={handleClick}
         >
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            className="hidden"
+            accept="audio/*"
+          />
           <div className="text-center space-y-8 max-w-lg">
             {/* Icon */}
             <div className="flex justify-center">
@@ -72,7 +92,7 @@ export const FileDropZone = ({ onFileLoad, isVisible }: FileDropZoneProps) => {
               <p className="text-lg text-muted-foreground max-w-md mx-auto">
                 {isDragOver 
                   ? 'Release to load your audio file and start creating!'
-                  : 'Drag & drop an audio file here to transform your drawings into granular soundscapes'
+                  : 'Click or drag & drop an audio file to transform your drawings into granular soundscapes'
                 }
               </p>
             </div>

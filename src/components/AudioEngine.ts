@@ -23,10 +23,11 @@ export class AudioEngine {
   private isPlaying = false;
   private grainScheduler: number | null = null;
   private activeGrains: AudioBufferSourceNode[] = [];
-  private mediaRecorder: MediaRecorder | null = null;
-  private recordedChunks: Blob[] = [];
+  // Recording state for WAV export
+  private recorderNode: ScriptProcessorNode | null = null;
+  private recordedBuffers: Float32Array[][] = [];
+  private recordingLength = 0;
   private isRecording = false;
-  private recordingDestination: MediaStreamAudioDestinationNode | null = null;
 
   async initialize() {
     try {
@@ -35,9 +36,22 @@ export class AudioEngine {
       this.masterGain.gain.value = 0.3;
       this.masterGain.connect(this.audioContext.destination);
 
-      // Create recording destination
-      this.recordingDestination = this.audioContext.createMediaStreamDestination();
-      this.masterGain.connect(this.recordingDestination);
+      // Create recorder node for WAV capture
+      this.recorderNode = this.audioContext.createScriptProcessor(4096, 2, 2);
+      this.recorderNode.onaudioprocess = (e) => {
+        if (this.isRecording) {
+          // Capture each channel's PCM data
+          for (let ch = 0; ch < e.inputBuffer.numberOfChannels; ch++) {
+            const data = e.inputBuffer.getChannelData(ch);
+            this.recordedBuffers[ch].push(new Float32Array(data));
+          }
+          this.recordingLength += e.inputBuffer.length;
+        }
+      };
+      // Tap audio after master gain
+      this.masterGain.connect(this.recorderNode);
+      // Ensure processor node stays alive
+      this.recorderNode.connect(this.audioContext.destination);
 
       // Create reverb
       this.reverb = this.audioContext.createConvolver();
@@ -103,6 +117,10 @@ export class AudioEngine {
     
     // Map Y position to pitch (0.5 to 2.0 playback rate)
     source.playbackRate.value = 0.5 + (params.pitch * 1.5);
+    // Reverse granular mode: play backwards
+    if (params.color === 'reverse-grain') {
+      source.playbackRate.value *= -1;
+    }
     
     // Apply color-based effects and brush size modulation
     this.applyColorEffect(filterNode, gainNode, params.color, brushSize);
@@ -110,16 +128,28 @@ export class AudioEngine {
     // Grain envelope - larger brushes have longer envelope
     const grainDuration = 0.05 + (brushSize / 50) * 0.1; // 50ms to 150ms
     const now = this.audioContext.currentTime;
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(0.1, now + grainDuration * 0.1);
-    gainNode.gain.linearRampToValueAtTime(0, now + grainDuration);
+    if (params.color === 'reverse-grain') {
+      // Fade-in length scales with brush size, no fade-out
+      const fadeInTime = Math.min(brushSize / 50, 1) * grainDuration;
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.1, now + fadeInTime);
+      // maintain level until grain ends
+      gainNode.gain.setValueAtTime(0.1, now + grainDuration);
+    } else {
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.1, now + grainDuration * 0.1);
+      gainNode.gain.linearRampToValueAtTime(0, now + grainDuration);
+    }
     
     // Connect audio graph
     source.connect(filterNode);
     filterNode.connect(gainNode);
     
     // Route to effects based on color
-    if (params.color === 'hot-pink' || params.color === 'violet-glow') {
+    if (params.color === 'reverse-grain') {
+      // direct to master for reverse grains
+      gainNode.connect(this.masterGain!);
+    } else if (params.color === 'hot-pink' || params.color === 'violet-glow') {
       gainNode.connect(this.reverb!);
       this.reverb!.connect(this.masterGain!);
     } else if (params.color === 'cyber-orange') {
@@ -178,39 +208,30 @@ export class AudioEngine {
     }
   }
 
+  /** Begin WAV recording by resetting buffers */
   startRecording(): boolean {
-    if (!this.recordingDestination || this.isRecording) return false;
-
-    try {
-      this.recordedChunks = [];
-      this.mediaRecorder = new MediaRecorder(this.recordingDestination.stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.recordedChunks.push(event.data);
-        }
-      };
-
-      this.mediaRecorder.start();
-      this.isRecording = true;
-      return true;
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-      return false;
-    }
+    if (!this.audioContext || !this.recorderNode || this.isRecording) return false;
+    // initialize channel buffers
+    this.recordedBuffers = [[], []];
+    this.recordingLength = 0;
+    this.isRecording = true;
+    return true;
   }
 
-  stopRecording(): Blob | null {
-    if (!this.mediaRecorder || !this.isRecording) return null;
-
-    this.mediaRecorder.stop();
+  /** Stop WAV recording and return a Promise resolving to a WAV Blob */
+  async stopRecording(): Promise<Blob | null> {
+    if (!this.audioContext || !this.isRecording) return null;
     this.isRecording = false;
-
-    const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
-    this.recordedChunks = [];
-    return blob;
+    try {
+      const wavBlob = this.encodeWAV();
+      // reset buffers
+      this.recordedBuffers = [];
+      this.recordingLength = 0;
+      return wavBlob;
+    } catch (error) {
+      console.error('Failed to encode WAV:', error);
+      return null;
+    }
   }
 
   isCurrentlyRecording(): boolean {
@@ -243,5 +264,64 @@ export class AudioEngine {
 
   isAudioPlaying() {
     return this.isPlaying;
+  }
+
+  /** Helper: flatten Float32Array buffers into one */
+  private flattenChannel(buffers: Float32Array[]): Float32Array {
+    const result = new Float32Array(this.recordingLength);
+    let offset = 0;
+    for (const buf of buffers) {
+      result.set(buf, offset);
+      offset += buf.length;
+    }
+    return result;
+  }
+
+  /** Encode recorded PCM buffers into WAV Blob */
+  private encodeWAV(): Blob {
+    const numChannels = this.recordedBuffers.length;
+    const sampleRate = this.audioContext!.sampleRate;
+    // Flatten per-channel data
+    const channelData = this.recordedBuffers.map(buffers => this.flattenChannel(buffers));
+    // Interleave channels
+    const interleaved = new Float32Array(this.recordingLength * numChannels);
+    for (let i = 0; i < this.recordingLength; i++) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        interleaved[i * numChannels + ch] = channelData[ch][i];
+      }
+    }
+    // Create WAV file buffer
+    const buffer = new ArrayBuffer(44 + interleaved.length * 2);
+    const view = new DataView(buffer);
+    const writeString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+    // RIFF header
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + interleaved.length * 2, true);
+    writeString(8, 'WAVE');
+    // fmt subchunk
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    // data subchunk
+    writeString(36, 'data');
+    view.setUint32(40, interleaved.length * 2, true);
+    // PCM samples
+    let offset = 44;
+    for (let i = 0; i < interleaved.length; i++) {
+      let sample = interleaved[i];
+      sample = Math.max(-1, Math.min(1, sample));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      offset += 2;
+    }
+    return new Blob([view], { type: 'audio/wav' });
   }
 }
