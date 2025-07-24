@@ -21,7 +21,7 @@ export const StatusDisplay = ({ brushSize, activeColor, isVisible }: StatusDispl
   };
 
   return (
-    <Card className="fixed bottom-4 right-4 p-3 bg-card/80 backdrop-blur-md border-border/50 shadow-xl z-10">
+    <Card className="fixed bottom-4 right-4 p-3 bg-card/80 backdrop-blur-md border-border/50 shadow-xl z-10 pointer-events-none">
       <div className="text-sm space-y-1">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Brush:</span>

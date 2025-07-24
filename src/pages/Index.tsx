@@ -2,10 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { DrawingCanvas } from '@/components/DrawingCanvas';
 import { Controls } from '@/components/Controls';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { ColorPalette } from '@/components/ColorPalette';
 import { FileDropZone } from '@/components/FileDropZone';
 import { StatusDisplay } from '@/components/StatusDisplay';
 import { AudioEngine } from '@/components/AudioEngine';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
+import { Info as InfoIcon, Keyboard, MousePointer, Sliders, Repeat, Mic, Upload } from 'lucide-react';
 
 const Index = () => {
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
@@ -19,6 +23,28 @@ const Index = () => {
   const [brushSize, setBrushSize] = useState(15);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
+  // Tempo sync state
+  const [tempoSyncOn, setTempoSyncOn] = useState(false);
+  const [bpm, setBpm] = useState(120);
+  // Grain and delay subdivisions
+  const [grainSub, setGrainSub] = useState(4);
+  const [delaySub, setDelaySub] = useState(2);
+  const defaultBrush = 15;
+
+  // Update AudioEngine with tempo sync toggle and BPM changes
+  useEffect(() => {
+    audioEngineRef.current.toggleTempoSync(tempoSyncOn);
+  }, [tempoSyncOn]);
+  useEffect(() => {
+    audioEngineRef.current.setBPM(bpm);
+  }, [bpm]);
+  // Update subdivisions directly (never zero)
+  useEffect(() => {
+    audioEngineRef.current.setGrainSubdivision(grainSub);
+  }, [grainSub]);
+  useEffect(() => {
+    audioEngineRef.current.setDelaySubdivision(delaySub);
+  }, [delaySub]);
 
   // Keyboard shortcuts: 1-6 colors, ArrowUp/Down brush size, R toggle recording
   useEffect(() => {
@@ -41,6 +67,12 @@ const Index = () => {
         } else {
           handleStopRecording();
         }
+        e.preventDefault();
+      } else if (key === 'u' || key === 'U') {
+        handleUndo();
+        e.preventDefault();
+      } else if (key === 'c' || key === 'C') {
+        handleClear();
         e.preventDefault();
       }
     };
@@ -160,28 +192,31 @@ const Index = () => {
       
       {/* UI Overlay */}
       <div className="relative z-10 pointer-events-none">
-        <div className="pointer-events-auto">
         <Controls
-            onClear={handleClear}
-            onUndo={handleUndo}
-            onFileLoad={handleFileLoad}
-            hasAudioBuffer={hasAudioBuffer}
-            volume={volume}
-            onVolumeChange={handleVolumeChange}
-            brushSize={brushSize}
-            onBrushSizeChange={setBrushSize}
-            isRecording={isRecording}
-            onStartRecording={handleStartRecording}
-            onStopRecording={handleStopRecording}
-          />
-        </div>
-        
-        <div className="pointer-events-auto">
-          <ColorPalette
-            activeColor={activeColor}
-            onColorChange={setActiveColor}
-          />
-        </div>
+          onClear={handleClear}
+          onUndo={handleUndo}
+          onFileLoad={handleFileLoad}
+          hasAudioBuffer={hasAudioBuffer}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          brushSize={brushSize}
+          onBrushSizeChange={setBrushSize}
+          isRecording={isRecording}
+          onStartRecording={handleStartRecording}
+          onStopRecording={handleStopRecording}
+          tempoSyncOn={tempoSyncOn}
+          onTempoSyncChange={setTempoSyncOn}
+          bpm={bpm}
+          onBpmChange={setBpm}
+          grainSub={grainSub}
+          onGrainSubChange={setGrainSub}
+          delaySub={delaySub}
+          onDelaySubChange={setDelaySub}
+        />
+        <ColorPalette
+          activeColor={activeColor}
+          onColorChange={setActiveColor}
+        />
       </div>
 
       {/* File Drop Zone */}
@@ -199,7 +234,7 @@ const Index = () => {
 
       {/* Title/Branding */}
       {!hasAudioBuffer && (
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10">
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10 pointer-events-none">
           <div className="text-center">
             <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Draw Your Sound
@@ -211,18 +246,73 @@ const Index = () => {
         </div>
       )}
 
-      {/* Shortcut Legend */}
-      <div className="fixed bottom-4 left-4 z-20 p-2 bg-black bg-opacity-50 text-white text-xs rounded pointer-events-none">
-        <div className="font-semibold mb-1">Shortcuts:</div>
-        <div>1: Electric Blue</div>
-        <div>2: Neon Green</div>
-        <div>3: Hot Pink</div>
-        <div>4: Cyber Orange</div>
-        <div>5: Violet Glow</div>
-        <div>6: Reverse Grain</div>
-        <div className="mt-1">↑: Increase Brush Size</div>
-        <div>↓: Decrease Brush Size</div>
-        <div>R: Toggle Recording</div>
+      {/* Info Panel Trigger */}
+      <div className="relative z-20 pointer-events-none">
+        <div className="pointer-events-auto fixed bottom-4 left-4">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Info">
+                <InfoIcon className="w-5 h-5" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-xl">
+              <DialogHeader>
+                <DialogTitle>Usage Guide</DialogTitle>
+              </DialogHeader>
+              <DialogDescription>
+                <div className="grid gap-4">
+                  <div className="flex items-start gap-3">
+                    <MousePointer className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Draw to Create Grains</h4>
+                      <p className="text-sm text-muted-foreground">X → position, Y → pitch, Speed → density</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Keyboard className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Keyboard Shortcuts</h4>
+                      <p className="text-sm text-muted-foreground">1-6 select colors; ↑/↓ adjust brush size; R toggle recording; U undo; C clear canvas</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Sliders className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Brush Speed Effects</h4>
+                      <p className="text-sm text-muted-foreground">Speed affects grain density, and in free mode also modulates reverb, delay, and grain size subtly based on movement speed</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Mic className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Recording</h4>
+                      <p className="text-sm text-muted-foreground">Click mic button or press R to record; exports save as WAV files</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Upload className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Sample Loading</h4>
+                      <p className="text-sm text-muted-foreground">Use Load Sample button or drag-and-drop anywhere</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Repeat className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Undo & Clear</h4>
+                      <p className="text-sm text-muted-foreground">U to undo last stroke; C to clear canvas; or use controls</p>
+                    </div>
+                  </div>
+                </div>
+              </DialogDescription>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button>Close</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
     </div>
   );

@@ -153,63 +153,57 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
 
     const rect = canvas.getBoundingClientRect();
     
-    if ('touches' in event) {
-      const touch = event.touches[0];
-      return {
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top,
-      };
-    } else {
-      return {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
-    }
+    // Not used for native pointer events
+    return null;
   };
 
-  const startDrawing = useCallback((event: React.MouseEvent | React.TouchEvent) => {
-    event.preventDefault();
-    const point = getEventPoint(event);
-    if (!point) return;
-
+  // Native pointer start handler
+  const handlePointerDown = useCallback((e: PointerEvent) => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     setIsDrawing(true);
-    const drawPoint = createDrawPoint(point.x, point.y);
+    const drawPoint = createDrawPoint(x, y);
     setCurrentStroke([drawPoint]);
-    
     triggerGrain(drawPoint);
   }, [activeColor]);
 
-  const draw = useCallback((event: React.MouseEvent | React.TouchEvent) => {
-    event.preventDefault();
+  // Native pointer move handler
+  const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!isDrawing) return;
-
-    const point = getEventPoint(event);
-    if (!point) return;
-
-    const drawPoint = createDrawPoint(point.x, point.y);
-    
+    const canvas = canvasRef.current; if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const drawPoint = createDrawPoint(x, y);
     setCurrentStroke(prev => {
-      const newStroke = [...prev, drawPoint];
-      
-      // Draw line from last point to current point
-      if (prev.length > 0) {
-        drawLine(prev[prev.length - 1], drawPoint);
-      }
-      
-      return newStroke;
+      if (prev.length > 0) drawLine(prev[prev.length - 1], drawPoint);
+      return [...prev, drawPoint];
     });
-
     triggerGrain(drawPoint);
   }, [isDrawing, activeColor]);
 
-  const stopDrawing = useCallback(() => {
+  // Native pointer up handler
+  const handlePointerUp = useCallback(() => {
     if (!isDrawing) return;
-    
     setIsDrawing(false);
     setStrokes(prev => [...prev, currentStroke]);
     setCurrentStroke([]);
     lastPointRef.current = null;
   }, [isDrawing, currentStroke]);
+
+  // Attach global pointer events to allow drawing from UI overlays
+  useEffect(() => {
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [handlePointerDown, handlePointerMove, handlePointerUp]);
 
   // Animation loop for visual effects
   useEffect(() => {
@@ -227,21 +221,17 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     };
   }, []);
 
+  // Remove global pointer listeners: attach events directly to canvas
+
+
   return (
     <canvas
       ref={canvasRef}
       className="fixed inset-0 w-full h-full cursor-crosshair touch-none"
-      style={{ 
+      style={{
         background: 'linear-gradient(180deg, hsl(240, 10%, 3.9%), hsl(240, 8%, 5%))',
         zIndex: 1
       }}
-      onMouseDown={startDrawing}
-      onMouseMove={draw}
-      onMouseUp={stopDrawing}
-      onMouseLeave={stopDrawing}
-      onTouchStart={startDrawing}
-      onTouchMove={draw}
-      onTouchEnd={stopDrawing}
     />
   );
 };

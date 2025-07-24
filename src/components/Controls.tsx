@@ -3,6 +3,8 @@ import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { RotateCcw, Upload, Trash2, Mic, MicOff } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 
 interface ControlsProps {
   onClear: () => void;
@@ -16,6 +18,14 @@ interface ControlsProps {
   isRecording: boolean;
   onStartRecording: () => void;
   onStopRecording: () => void;
+  tempoSyncOn: boolean;
+  onTempoSyncChange: (on: boolean) => void;
+  bpm: number;
+  onBpmChange: (bpm: number) => void;
+  grainSub: number;
+  onGrainSubChange: (sub: number) => void;
+  delaySub: number;
+  onDelaySubChange: (sub: number) => void;
 }
 
 export const Controls = ({
@@ -29,7 +39,15 @@ export const Controls = ({
   onBrushSizeChange,
   isRecording,
   onStartRecording,
-  onStopRecording
+  onStopRecording,
+  tempoSyncOn,
+  onTempoSyncChange,
+  bpm,
+  onBpmChange,
+  grainSub,
+  onGrainSubChange,
+  delaySub,
+  onDelaySubChange
 }: ControlsProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,21 +63,21 @@ export const Controls = ({
   };
 
   return (
-    <div className="fixed top-4 left-4 z-10 space-y-3">
+    <div className="fixed top-4 left-4 z-10 space-y-3 pointer-events-none">
       {/* Main Controls */}
-      <Card className="p-4 bg-card/80 backdrop-blur-md border-border/50 shadow-2xl">
-        <div className="flex items-center gap-3">
+      <Card className="p-4 bg-card/60 backdrop-blur-md border-border/50 shadow-2xl opacity-60 pointer-events-none">
+        <div className="pointer-events-none flex items-center gap-3">
           {/* Play/Stop Controls */}
           {/* Play/Stop removed: audio plays by default */}
 
           {/* Recording Controls */}
-          <div className="flex gap-2">
+            <div className="flex gap-2">
             {!isRecording ? (
               <Button
                 onClick={onStartRecording}
                 disabled={!hasAudioBuffer}
                 variant="outline"
-                className="border-border hover:bg-red-500/20 hover:text-red-400 transition-all duration-300"
+                className="pointer-events-auto border-border hover:bg-red-500/20 hover:text-red-400 transition-all duration-300"
               >
                 <Mic className="w-4 h-4" />
               </Button>
@@ -77,11 +95,11 @@ export const Controls = ({
           <div className="w-px h-6 bg-border" />
 
           {/* File Upload */}
-          <Button
-            onClick={handleUploadClick}
-            variant="secondary"
-            className="bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-lg transition-all duration-300"
-          >
+        <Button
+          onClick={handleUploadClick}
+          variant="secondary"
+          className="bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-lg transition-all duration-300 pointer-events-auto"
+        >
             <Upload className="w-4 h-4 mr-2" />
             Load Sample
           </Button>
@@ -102,7 +120,7 @@ export const Controls = ({
               onClick={onUndo}
               variant="outline"
               size="sm"
-              className="border-border hover:bg-accent/50 transition-all duration-300"
+              className="pointer-events-auto border-border hover:bg-accent/50 transition-all duration-300"
             >
               <RotateCcw className="w-4 h-4" />
             </Button>
@@ -110,7 +128,7 @@ export const Controls = ({
               onClick={onClear}
               variant="outline"
               size="sm"
-              className="border-border hover:bg-destructive/20 hover:text-destructive transition-all duration-300"
+              className="pointer-events-auto border-border hover:bg-destructive/20 hover:text-destructive transition-all duration-300"
             >
               <Trash2 className="w-4 h-4" />
             </Button>
@@ -119,8 +137,8 @@ export const Controls = ({
       </Card>
 
       {/* Volume and Brush Controls */}
-      <Card className="p-3 bg-card/80 backdrop-blur-md border-border/50 shadow-xl">
-        <div className="space-y-3">
+      <Card className="p-3 bg-card/60 backdrop-blur-md border-border/50 shadow-xl opacity-60 pointer-events-none">
+        <div className="pointer-events-none space-y-3">
           {/* Volume Control */}
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground font-medium min-w-[40px]">VOL</span>
@@ -129,7 +147,7 @@ export const Controls = ({
               onValueChange={(value) => onVolumeChange(value[0] / 100)}
               max={100}
               step={1}
-              className="flex-1"
+              className="flex-1 pointer-events-auto"
             />
             <span className="text-xs text-muted-foreground min-w-[30px]">{Math.round(volume * 100)}%</span>
           </div>
@@ -143,10 +161,46 @@ export const Controls = ({
               min={5}
               max={50}
               step={1}
-              className="flex-1"
+              className="flex-1 pointer-events-auto"
             />
             <span className="text-xs text-muted-foreground min-w-[30px]">{brushSize}px</span>
           </div>
+        </div>
+      </Card>
+
+      {/* Tempo Sync + Subdivision Controls */}
+      <Card className="p-3 bg-card/60 backdrop-blur-md border-border/50 shadow-xl opacity-60 pointer-events-none">
+        <div className="pointer-events-none flex items-center gap-4">
+          <span className="text-xs text-muted-foreground font-medium">Sync</span>
+          <Switch className="pointer-events-auto" checked={tempoSyncOn} onCheckedChange={onTempoSyncChange} />
+          <Input
+            type="number"
+            value={bpm}
+            onChange={e => onBpmChange(Number(e.target.value))}
+            disabled={!tempoSyncOn}
+            className="pointer-events-auto w-16"
+          />
+          <span className="text-xs text-muted-foreground">BPM</span>
+          <label className="text-xs text-muted-foreground font-medium">Grain Sub</label>
+          <select
+            value={grainSub}
+            onChange={e => onGrainSubChange(Number(e.target.value))}
+            className="pointer-events-auto bg-background border border-input rounded-md p-1 text-sm"
+          >
+            {[1,2,4,8,16,32].map(val => (
+              <option key={val} value={val}>{val}</option>
+            ))}
+          </select>
+          <label className="text-xs text-muted-foreground font-medium">Delay Sub</label>
+          <select
+            value={delaySub}
+            onChange={e => onDelaySubChange(Number(e.target.value))}
+            className="pointer-events-auto bg-background border border-input rounded-md p-1 text-sm"
+          >
+            {[1,2,4,8,16,32].map(val => (
+              <option key={val} value={val}>{val}</option>
+            ))}
+          </select>
         </div>
       </Card>
     </div>

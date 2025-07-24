@@ -23,6 +23,11 @@ export class AudioEngine {
   private isPlaying = false;
   private grainScheduler: number | null = null;
   private activeGrains: AudioBufferSourceNode[] = [];
+  // Tempo sync settings
+  private tempoSyncOn: boolean = false;
+  private bpm: number = 120;
+  private grainSubdivision: number = 4;  // divisor for quarter note (4 = 1/16)
+  private delaySubdivision: number = 2;  // divisor for quarter note (2 = 1/8)
   // Recording state for WAV export
   private recorderNode: ScriptProcessorNode | null = null;
   private recordedBuffers: Float32Array[][] = [];
@@ -53,13 +58,15 @@ export class AudioEngine {
       // Ensure processor node stays alive
       this.recorderNode.connect(this.audioContext.destination);
 
-      // Create reverb
+      // Create reverb with initial decay based on BPM
       this.reverb = this.audioContext.createConvolver();
-      this.reverb.buffer = await this.createReverbImpulse();
+      const initialDecay = 60 / this.bpm;
+      this.reverb.buffer = await this.createReverbImpulse(initialDecay);
       
       // Create delay
       this.delay = this.audioContext.createDelay(1.0);
-      this.delay.delayTime.value = 0.3;
+      // Set delay time based on tempo sync settings
+      this.updateDelayTime();
       this.delayFeedback = this.audioContext.createGain();
       this.delayFeedback.gain.value = 0.4;
       
@@ -75,8 +82,9 @@ export class AudioEngine {
     }
   }
 
-  private async createReverbImpulse(): Promise<AudioBuffer> {
-    const length = this.audioContext!.sampleRate * 2;
+  private async createReverbImpulse(decaySeconds: number = 2): Promise<AudioBuffer> {
+    // decaySeconds defines the reverb tail length in seconds
+    const length = this.audioContext!.sampleRate * decaySeconds;
     const impulse = this.audioContext!.createBuffer(2, length, this.audioContext!.sampleRate);
     
     for (let channel = 0; channel < 2; channel++) {
@@ -113,7 +121,11 @@ export class AudioEngine {
     
     // Map X position to buffer position
     const startTime = params.position * this.audioBuffer.duration;
-    source.start(0, startTime, 0.1); // 100ms grain duration
+    // Prepare scheduling parameters
+    const nowTime = this.audioContext.currentTime;
+    const subDur = (60 / this.bpm) / this.grainSubdivision;
+    const delayOffset = this.tempoSyncOn ? Math.ceil(nowTime / subDur) * subDur - nowTime : 0;
+    const playTime = nowTime + delayOffset;
     
     // Map Y position to pitch (0.5 to 2.0 playback rate)
     source.playbackRate.value = 0.5 + (params.pitch * 1.5);
@@ -125,38 +137,53 @@ export class AudioEngine {
     // Apply color-based effects and brush size modulation
     this.applyColorEffect(filterNode, gainNode, params.color, brushSize);
     
-    // Grain envelope - larger brushes have longer envelope
-    const grainDuration = 0.05 + (brushSize / 50) * 0.1; // 50ms to 150ms
-    const now = this.audioContext.currentTime;
-    if (params.color === 'reverse-grain') {
-      // Fade-in length scales with brush size, no fade-out
-      const fadeInTime = Math.min(brushSize / 50, 1) * grainDuration;
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(0.1, now + fadeInTime);
-      // maintain level until grain ends
-      gainNode.gain.setValueAtTime(0.1, now + grainDuration);
-    } else {
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(0.1, now + grainDuration * 0.1);
-      gainNode.gain.linearRampToValueAtTime(0, now + grainDuration);
-    }
-    
+    // Grain envelope: base duration 50-150ms, adjust in free mode by movement speed
+    const baseDuration = 0.05 + (brushSize / 50) * 0.1; // 50ms to 150ms
+    const speedFactor = params.density; // speed proxy
+    const grainDuration = this.tempoSyncOn
+      ? baseDuration
+      : baseDuration / (1 + speedFactor * 0.5); // faster → shorter grain
+    // Envelope
+    const envelopePeak = 0.1;
+    const fadeInTime = Math.min(grainDuration * 0.1, grainDuration);
+    gainNode.gain.setValueAtTime(0, playTime);
+    gainNode.gain.linearRampToValueAtTime(envelopePeak, playTime + fadeInTime);
+    gainNode.gain.linearRampToValueAtTime(0, playTime + grainDuration);
+  
     // Connect audio graph
     source.connect(filterNode);
     filterNode.connect(gainNode);
-    
-    // Route to effects based on color
+  
+    // Route to effects based on color and apply free-mode dynamics
     if (params.color === 'reverse-grain') {
-      // direct to master for reverse grains
       gainNode.connect(this.masterGain!);
     } else if (params.color === 'hot-pink' || params.color === 'violet-glow') {
       gainNode.connect(this.reverb!);
       this.reverb!.connect(this.masterGain!);
+      // Free mode: dynamic reverb decay
+      if (!this.tempoSyncOn && this.audioContext) {
+        const decayBase = 2;
+        const decayTime = decayBase / (1 + speedFactor * 0.5);
+        this.createReverbImpulse(decayTime).then(buf => {
+          this.reverb!.buffer = buf;
+        });
+      }
     } else if (params.color === 'cyber-orange') {
       gainNode.connect(this.delay!);
+      // Free mode: dynamic delay time
+      if (!this.tempoSyncOn && this.audioContext) {
+        const now = this.audioContext.currentTime;
+        const baseDelay = (60 / this.bpm) / this.delaySubdivision;
+        const newDelay = baseDelay / (1 + speedFactor * 0.5);
+        this.delay!.delayTime.cancelScheduledValues(now);
+        this.delay!.delayTime.setValueAtTime(this.delay!.delayTime.value, now);
+        this.delay!.delayTime.linearRampToValueAtTime(newDelay, now + 0.05);
+      }
     } else {
       gainNode.connect(this.masterGain!);
     }
+    // Start grain playback on connected graph with envelope duration
+    source.start(playTime, startTime, grainDuration);
     
     // Cleanup
     this.activeGrains.push(source);
@@ -323,5 +350,40 @@ export class AudioEngine {
       offset += 2;
     }
     return new Blob([view], { type: 'audio/wav' });
+  }
+
+  // Tempo sync controls
+  public toggleTempoSync(on: boolean) {
+    this.tempoSyncOn = on;
+  }
+  public setBPM(bpm: number) {
+    this.bpm = bpm;
+    this.updateDelayTime();
+    // Update reverb decay to one beat length
+    if (this.reverb && this.audioContext) {
+      const decayTime = 60 / this.bpm;
+      this.createReverbImpulse(decayTime).then(buffer => {
+        this.reverb!.buffer = buffer;
+      });
+    }
+  }
+  public setGrainSubdivision(subdivision: number) {
+    this.grainSubdivision = subdivision;
+  }
+  public setDelaySubdivision(subdivision: number) {
+    this.delaySubdivision = subdivision;
+    this.updateDelayTime();
+  }
+  private updateDelayTime() {
+    if (this.delay && this.audioContext) {
+      const now = this.audioContext.currentTime;
+      const newTime = (60 / this.bpm) / this.delaySubdivision;
+      // Smoothly ramp delayTime to new value to avoid clicks
+      this.delay.delayTime.cancelScheduledValues(now);
+      // start from current value
+      this.delay.delayTime.setValueAtTime(this.delay.delayTime.value, now);
+      // ramp to target over 50ms
+      this.delay.delayTime.linearRampToValueAtTime(newTime, now + 0.05);
+    }
   }
 }

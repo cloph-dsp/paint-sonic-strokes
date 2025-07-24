@@ -18,8 +18,8 @@ const colors = [
 
 export const ColorPalette = ({ activeColor, onColorChange }: ColorPaletteProps) => {
   return (
-    <Card className="fixed top-4 right-4 p-4 bg-card/80 backdrop-blur-md border-border/50 shadow-2xl z-10">
-      <div className="space-y-3">
+      <Card className="fixed top-4 right-4 p-4 bg-card/80 backdrop-blur-md border-border/50 shadow-2xl z-10 pointer-events-none">
+      <div className="pointer-events-auto space-y-3">
         <h3 className="text-sm font-semibold text-foreground/80 mb-3">Sound Colors</h3>
         <div className="grid gap-2">
           {colors.map((color) => (
@@ -56,11 +56,6 @@ export const ColorPalette = ({ activeColor, onColorChange }: ColorPaletteProps) 
           ))}
         </div>
         
-        <div className="mt-4 p-2 bg-background/30 rounded border border-border/30">
-          <p className="text-xs text-foreground/60">
-            Draw to create grains: X→position, Y→pitch, speed→density
-          </p>
-        </div>
       </div>
     </Card>
   );
