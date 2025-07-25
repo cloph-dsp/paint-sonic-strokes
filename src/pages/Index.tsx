@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ColorPalette } from '@/components/ColorPalette';
 import { FileDropZone } from '@/components/FileDropZone';
 import { StatusDisplay } from '@/components/StatusDisplay';
+import { LiveVisualizer } from '@/components/LiveVisualizer';
 import { AudioEngine } from '@/components/AudioEngine';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Info as InfoIcon, Keyboard, MousePointer, Sliders, Repeat, Mic, Upload } from 'lucide-react';
@@ -52,6 +53,9 @@ const Index = () => {
   useEffect(() => {
     const colorList = ['electric-blue','neon-green','hot-pink','cyber-orange','violet-glow','reverse-grain'];
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip shortcuts when typing into input fields
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
       const key = e.key;
       if (key >= '1' && key <= '6') {
         const idx = parseInt(key, 10) - 1;
@@ -82,21 +86,19 @@ const Index = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isRecording]);
 
-  useEffect(() => {
-    const initializeAudio = async () => {
-      const success = await audioEngineRef.current.initialize();
-      if (success) {
+
+  const handleFileLoad = async (file: File) => {
+    // Initialize audio engine on first file load if not already
+    if (!isAudioInitialized) {
+      const initSuccess = await audioEngineRef.current.initialize();
+      if (initSuccess) {
         setIsAudioInitialized(true);
         toast.success('Audio engine ready! Load a sample to begin.');
       } else {
         toast.error('Failed to initialize audio. Please check browser compatibility.');
+        return;
       }
-    };
-
-    initializeAudio();
-  }, []);
-
-  const handleFileLoad = async (file: File) => {
+    }
     const success = await audioEngineRef.current.loadAudioFile(file);
     if (success) {
       setHasAudioBuffer(true);
@@ -236,6 +238,12 @@ const Index = () => {
         activeColor={activeColor}
         isVisible={hasAudioBuffer && !showDropZone}
       />
+      {/* Live audio spectrum visualizer */}
+      {hasAudioBuffer && !showDropZone && (
+        <div className="fixed bottom-24 right-4 z-20 pointer-events-none">
+          <LiveVisualizer audioEngine={audioEngineRef.current} width={100} height={50} />
+        </div>
+      )}
 
       {/* Title/Branding */}
       {!hasAudioBuffer && (

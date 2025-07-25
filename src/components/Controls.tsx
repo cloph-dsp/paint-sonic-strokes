@@ -190,8 +190,18 @@ export const Controls = ({
             type="number"
             value={bpm}
             onChange={e => onBpmChange(Number(e.target.value))}
+            onBlur={e => {
+              let val = Number(e.target.value);
+              if (val < 30) val = 30;
+              else if (val > 300) val = 300;
+              onBpmChange(val);
+            }}
             disabled={!tempoSyncOn}
-            className="pointer-events-auto w-16"
+            min={30}
+            max={300}
+            step={1}
+            inputMode="numeric"
+            className="pointer-events-auto w-20"
           />
           <span className="text-xs text-muted-foreground">BPM</span>
           <label className="text-xs text-muted-foreground font-medium">Grain Sub</label>

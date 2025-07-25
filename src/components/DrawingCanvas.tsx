@@ -12,6 +12,11 @@ interface DrawingCanvasProps {
 
 export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, brushSize = 15, showGrid }: DrawingCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Spatial minimap for grain density overview
+  const minimapRef = useRef<HTMLCanvasElement>(null);
+  const minimapCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const minimapWidth = 100;
+  const minimapHeight = 50;
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
   const animationRef = useRef<number>();
   const [isDrawing, setIsDrawing] = useState(false);
@@ -76,7 +81,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     
     lastPointRef.current = { x, y, time: timestamp };
     
-    return { x, y, speed, color: activeColor, timestamp };
+    return { x, y, speed, color: activeColor, timestamp, brushSize };
   };
 
   const triggerGrain = (point: DrawPoint) => {
@@ -93,6 +98,16 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     };
 
     audioEngine.createGrain(params, canvas.width, canvas.height, brushSize);
+    // Draw pulse on spatial minimap
+    const mctx = minimapCtxRef.current;
+    if (mctx) {
+      const xNorm = (point.x / canvas.width) * minimapWidth;
+      const yNorm = (point.y / canvas.height) * minimapHeight;
+      mctx.fillStyle = 'rgba(255,255,255,0.6)';
+      mctx.beginPath();
+      mctx.arc(xNorm, yNorm, 2, 0, Math.PI * 2);
+      mctx.fill();
+    }
   };
 
   const drawLine = (fromPoint: DrawPoint, toPoint: DrawPoint) => {
@@ -101,9 +116,9 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
 
     const color = getColorHSL(fromPoint.color);
     
-    // Dynamic line width based on speed and brush size
-    const baseWidth = brushSize * 0.2;
-    const speedWidth = Math.min(fromPoint.speed * 0.05, brushSize * 0.4);
+    // Dynamic line width based on speed and original brush size
+    const baseWidth = fromPoint.brushSize * 0.2;
+    const speedWidth = Math.min(fromPoint.speed * 0.05, fromPoint.brushSize * 0.4);
     const lineWidth = baseWidth + speedWidth;
 
     context.strokeStyle = color;
@@ -130,6 +145,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
 
   // Native pointer start handler with optional Y snapping
   const handlePointerDown = useCallback((e: PointerEvent) => {
+    e.preventDefault();
     const canvas = canvasRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const rawX = e.clientX - rect.left;
@@ -144,6 +160,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
 
   // Native pointer move handler with optional Y snapping
   const handlePointerMove = useCallback((e: PointerEvent) => {
+    e.preventDefault();
     if (!isDrawing) return;
     const canvas = canvasRef.current; if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -178,13 +195,15 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
 
   // Attach global pointer events to allow drawing from UI overlays
   useEffect(() => {
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.addEventListener('pointerdown', handlePointerDown);
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('pointerup', handlePointerUp);
     return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointerdown', handlePointerDown);
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('pointerup', handlePointerUp);
     };
   }, [handlePointerDown, handlePointerMove, handlePointerUp]);
 
@@ -202,6 +221,24 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
         cancelAnimationFrame(animationRef.current);
       }
     };
+  }, []);
+  // Spatial minimap fade loop
+  useEffect(() => {
+    const canvas = minimapRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx) return;
+    minimapCtxRef.current = ctx;
+    canvas.width = minimapWidth;
+    canvas.height = minimapHeight;
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.clearRect(0, 0, minimapWidth, minimapHeight);
+    const fade = () => {
+      if (!ctx) return;
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.fillRect(0, 0, minimapWidth, minimapHeight);
+      requestAnimationFrame(fade);
+    };
+    fade();
   }, []);
 
   const getColorHSL = (colorName: string): string => {
@@ -255,7 +292,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
       setCurrentStroke([]);
       redrawCanvas();
     }
-  }, [onClear, redrawCanvas]);
+  }, [onClear]);
 
   // Undo last stroke effect with grid redraw
   useEffect(() => {
@@ -263,17 +300,32 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
       setStrokes(prev => prev.slice(0, -1));
       redrawCanvas();
     }
-  }, [undoTrigger, redrawCanvas]);
+  }, [undoTrigger]);
 
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 w-full h-full cursor-crosshair touch-none"
-      style={{
-        background: 'linear-gradient(180deg, hsl(240, 10%, 3.9%), hsl(240, 8%, 5%))',
-        zIndex: 1
-      }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        onPointerDown={() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        }}
+        className="fixed inset-0 w-full h-full cursor-crosshair touch-none"
+        style={{
+          background: 'linear-gradient(180deg, hsl(240, 10%, 3.9%), hsl(240, 8%, 5%))',
+          zIndex: 1
+        }}
+      />
+      {/* Spatial minimap overlay */}
+      <canvas
+        ref={minimapRef}
+        className="fixed bottom-20 right-4 z-10 pointer-events-none"
+        style={{ width: minimapWidth, height: minimapHeight, opacity: 0.8, borderRadius: '4px' }}
+        width={minimapWidth}
+        height={minimapHeight}
+      />
+    </>
   );
 };

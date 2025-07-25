@@ -11,14 +11,18 @@ export interface DrawPoint {
   speed: number;
   color: string;
   timestamp: number;
+  brushSize: number; // brush size at the time of drawing
 }
 
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private analyserNode: AnalyserNode | null = null;
   private audioBuffer: AudioBuffer | null = null;
   private reverb: ConvolverNode | null = null;
+  private wetGainReverb: GainNode | null = null;
   private delay: DelayNode | null = null;
+  private wetGainDelay: GainNode | null = null;
   private delayFeedback: GainNode | null = null;
   private isPlaying = false;
   private grainScheduler: number | null = null;
@@ -37,9 +41,16 @@ export class AudioEngine {
   async initialize() {
     try {
       this.audioContext = new AudioContext();
+      // Resume context to allow decoding and playback
+      await this.audioContext.resume();
       this.masterGain = this.audioContext.createGain();
-      this.masterGain.gain.value = 0.3;
-      this.masterGain.connect(this.audioContext.destination);
+      this.masterGain.gain.value = 0.5;
+      // Setup analyser node for live visualizer
+      this.analyserNode = this.audioContext.createAnalyser();
+      this.analyserNode.fftSize = 32; // low resolution spectrum
+      // Route audio through analyser to destination
+      this.masterGain.connect(this.analyserNode);
+      this.analyserNode.connect(this.audioContext.destination);
 
       // Create recorder node for WAV capture
       this.recorderNode = this.audioContext.createScriptProcessor(4096, 2, 2);
@@ -145,8 +156,13 @@ export class AudioEngine {
     const grainDuration = this.tempoSyncOn
       ? baseDuration
       : baseDuration / (1 + speedFactor * 0.5); // faster → shorter grain
-    // Envelope
-    const envelopePeak = 0.1;
+    // Envelope: base peak amplitude, boost for wet effects
+    let envelopePeak = 0.1;
+    if (params.color === 'hot-pink' || params.color === 'violet-glow') {
+      envelopePeak = 0.15;
+    } else if (params.color === 'cyber-orange') {
+      envelopePeak = 0.12;
+    }
     const fadeInTime = Math.min(grainDuration * 0.1, grainDuration);
     gainNode.gain.setValueAtTime(0, playTime);
     gainNode.gain.linearRampToValueAtTime(envelopePeak, playTime + fadeInTime);
@@ -160,19 +176,26 @@ export class AudioEngine {
     if (params.color === 'reverse-grain') {
       gainNode.connect(this.masterGain!);
     } else if (params.color === 'hot-pink' || params.color === 'violet-glow') {
-      // Send through reverb (connected to master in initialize)
-      gainNode.connect(this.reverb!);
-      // Free mode: dynamic reverb decay
-      if (!this.tempoSyncOn && this.audioContext) {
-        const decayBase = 2;
-        const decayTime = decayBase / (1 + speedFactor * 0.5);
-        this.createReverbImpulse(decayTime).then(buf => {
-          this.reverb!.buffer = buf;
-        });
+      // Send grain direct and to reverb for clarity
+      gainNode.connect(this.masterGain!);
+      // Dynamic wet mix for reverb in free mode
+      if (this.wetGainReverb) {
+        const baseWet = 0.3;
+        const wetLevel = this.tempoSyncOn ? baseWet : baseWet / (1 + speedFactor * 0.5);
+        this.wetGainReverb.gain.setValueAtTime(wetLevel, this.audioContext!.currentTime);
+        gainNode.connect(this.wetGainReverb);
       }
     } else if (params.color === 'cyber-orange') {
-      gainNode.connect(this.delay!);
-      // Free mode: dynamic delay time
+      // Send grain direct and to delay for clarity
+      gainNode.connect(this.masterGain!);
+      // Dynamic wet mix for delay in free mode
+      if (this.wetGainDelay) {
+        const baseWet = 0.3;
+        const wetLevel = this.tempoSyncOn ? baseWet : baseWet / (1 + speedFactor * 0.5);
+        this.wetGainDelay.gain.setValueAtTime(wetLevel, this.audioContext!.currentTime);
+        gainNode.connect(this.wetGainDelay);
+      }
+      // Free mode: dynamic delay time adjustment
       if (!this.tempoSyncOn && this.audioContext) {
         const now = this.audioContext.currentTime;
         const baseDelay = (60 / this.bpm) / this.delaySubdivision;
@@ -213,7 +236,8 @@ export class AudioEngine {
       case 'hot-pink':
         filter.type = 'highpass';
         filter.frequency.value = 1000 - (wetAmount * 300);
-        gain.gain.value *= (0.5 + wetAmount * 0.3); // Louder with larger brush
+        // Maintain or slightly boost level for clarity
+        gain.gain.value = 1 + wetAmount * 0.2;
         break;
       case 'cyber-orange':
         filter.type = 'notch';
@@ -224,7 +248,8 @@ export class AudioEngine {
         filter.type = 'peaking';
         filter.frequency.value = 300 + (wetAmount * 200);
         filter.Q.value = 2 + (wetAmount * 3);
-        filter.gain.value = 4 + (wetAmount * 4);
+        // Moderate boost for definition
+        filter.gain.value = 1 + (wetAmount * 2);
         break;
       default:
         filter.type = 'allpass';
@@ -285,6 +310,10 @@ export class AudioEngine {
 
   getAudioBuffer() {
     return this.audioBuffer;
+  }
+  /** Provides access to the analyser node used for visualizations */
+  public getAnalyserNode(): AnalyserNode | null {
+    return this.analyserNode;
   }
 
   isInitialized() {
@@ -380,6 +409,11 @@ export class AudioEngine {
     if (this.delay && this.audioContext) {
       const now = this.audioContext.currentTime;
       const newTime = (60 / this.bpm) / this.delaySubdivision;
+      // Guard against invalid or zero BPM/subdivision
+      if (!isFinite(newTime) || newTime <= 0) {
+        console.warn('Invalid delay time computed, skipping update:', newTime);
+        return;
+      }
       // Smoothly ramp delayTime to new value to avoid clicks
       this.delay.delayTime.cancelScheduledValues(now);
       // start from current value
