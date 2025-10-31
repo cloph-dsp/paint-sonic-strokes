@@ -28,6 +28,10 @@ The development server runs on Vite. Once it boots, open the printed URL (typica
 - `npm run preview` – serve the production build locally for smoke tests.
 - `npm run lint` – lint the project with the shared ESLint configuration.
 
+## Deployment
+
+This repository ships with a GitHub Pages workflow (`.github/workflows/deploy-pages.yml`). Pushes to `main` build the project with the correct asset base (`/paint-sonic-strokes/`) and publish it to `https://cloph-dsp.github.io/paint-sonic-strokes/`. Routing uses a hash-based URL scheme (`#/…`) so refreshes work reliably on GitHub Pages.
+
 ## Audio & Browser Notes
 
 - AudioWorklets are required for low-latency recording. Safari 16.4+ and all modern Chromium/Firefox builds are supported.
