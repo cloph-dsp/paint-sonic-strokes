@@ -143,7 +143,10 @@ export class AudioEngine {
       return;
     }
     if (!this.recorderModuleLoaded) {
-      await this.audioContext.audioWorklet.addModule('/recorder-worklet.js');
+  const basePath = import.meta.env.BASE_URL ?? "/";
+  const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
+  const modulePath = `${normalizedBase}recorder-worklet.js`;
+      await this.audioContext.audioWorklet.addModule(modulePath);
       this.recorderModuleLoaded = true;
     }
     this.recorderNode = new AudioWorkletNode(this.audioContext, 'recorder-worklet', {
