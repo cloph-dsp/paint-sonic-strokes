@@ -24,14 +24,21 @@ export const LiveVisualizer = ({ audioEngine, width = 100, height = 50 }: LiveVi
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
 
+    let animationId: number;
     const drawSpectrum = () => {
-      requestAnimationFrame(drawSpectrum);
-      analyser.getByteFrequencyData(dataArrayRef.current!);
+      animationId = requestAnimationFrame(drawSpectrum);
+      const dataArray = dataArrayRef.current;
+      if (!dataArray) {
+        return;
+      }
+      const workingArray = new Uint8Array(dataArray.length);
+      workingArray.set(dataArray);
+      analyser.getByteFrequencyData(workingArray);
       ctx.clearRect(0, 0, width, height);
       const barWidth = width / bufferLength;
       let x = 0;
       for (let i = 0; i < bufferLength; i++) {
-        const v = dataArrayRef.current![i] / 255; // normalize
+        const v = workingArray[i] / 255; // normalize
         const barHeight = v * height;
         ctx.fillStyle = 'rgba(255,255,255,0.4)'; // subtle, blends into UI
         ctx.fillRect(x, height - barHeight, barWidth * 0.8, barHeight);
@@ -40,6 +47,11 @@ export const LiveVisualizer = ({ audioEngine, width = 100, height = 50 }: LiveVi
     };
 
     drawSpectrum();
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
   }, [audioEngine, height, width]);
 
   return (

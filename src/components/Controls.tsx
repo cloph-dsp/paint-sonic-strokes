@@ -1,10 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { RotateCcw, Upload, Trash2, Mic, MicOff } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { RotateCcw, Upload, Trash2, Mic, MicOff, Download } from 'lucide-react';
+import { useRef } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 interface ControlsProps {
   onClear: () => void;
@@ -18,6 +19,8 @@ interface ControlsProps {
   isRecording: boolean;
   onStartRecording: () => void;
   onStopRecording: () => void;
+  onDownloadRecording: () => void;
+  hasRecording: boolean;
   tempoSyncOn: boolean;
   onTempoSyncChange: (on: boolean) => void;
   bpm: number;
@@ -42,6 +45,8 @@ export const Controls = ({
   isRecording,
   onStartRecording,
   onStopRecording,
+  onDownloadRecording,
+  hasRecording,
   tempoSyncOn,
   onTempoSyncChange,
   bpm,
@@ -67,43 +72,73 @@ export const Controls = ({
   };
 
   return (
-    <div className="fixed top-4 left-4 z-10 space-y-3 pointer-events-none">
-      {/* Main Controls */}
-      <Card className="p-4 bg-card/60 backdrop-blur-md border-border/50 shadow-2xl opacity-60 pointer-events-none">
+    <TooltipProvider delayDuration={150}>
+      <div className="fixed top-4 left-4 z-10 space-y-3 pointer-events-none">
+        {/* Main Controls */}
+        <Card className="p-4 bg-card/70 backdrop-blur-md border-border/50 shadow-2xl opacity-80 hover:opacity-100 transition-opacity pointer-events-none">
         <div className="pointer-events-none flex items-center gap-3">
           {/* Play/Stop Controls */}
           {/* Play/Stop removed: audio plays by default */}
 
           {/* Recording Controls */}
-            <div className="flex gap-2">
+          <div className="flex gap-2">
             {!isRecording ? (
-              <Button
-                onClick={onStartRecording}
-                disabled={!hasAudioBuffer}
-                variant="outline"
-                className="pointer-events-auto border-border hover:bg-red-500/20 hover:text-red-400 transition-all duration-300"
-              >
-                <Mic className="w-4 h-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label="Start recording"
+                    size="icon"
+                    onClick={onStartRecording}
+                    disabled={!hasAudioBuffer}
+                    variant="outline"
+                    className="pointer-events-auto border-border hover:bg-red-500/20 hover:text-red-400 transition-all duration-300"
+                  >
+                    <Mic className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Start recording</TooltipContent>
+              </Tooltip>
             ) : (
-              <Button
-                onClick={onStopRecording}
-                className="pointer-events-auto bg-red-500 hover:bg-red-600 text-white shadow-lg transition-all duration-300 animate-pulse"
-              >
-                <MicOff className="w-4 h-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label="Stop recording"
+                    size="icon"
+                    onClick={onStopRecording}
+                    className="pointer-events-auto bg-red-500 hover:bg-red-600 text-white shadow-lg transition-all duration-300 animate-pulse"
+                  >
+                    <MicOff className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Stop recording</TooltipContent>
+              </Tooltip>
             )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label="Download last recording"
+                  size="icon"
+                  onClick={onDownloadRecording}
+                  disabled={!hasRecording}
+                  variant="outline"
+                  className="pointer-events-auto border-border hover:bg-primary/10 transition-all duration-300"
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Download last recording</TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Separator */}
           <div className="w-px h-6 bg-border" />
 
           {/* File Upload */}
-        <Button
-          onClick={handleUploadClick}
-          variant="secondary"
-          className="bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-lg transition-all duration-300 pointer-events-auto"
-        >
+          <Button
+            onClick={handleUploadClick}
+            variant="secondary"
+            className="bg-secondary hover:bg-secondary/80 text-secondary-foreground shadow-lg transition-all duration-300 pointer-events-auto"
+          >
             <Upload className="w-4 h-4 mr-2" />
             Load Sample
           </Button>
@@ -120,33 +155,46 @@ export const Controls = ({
 
           {/* Canvas Controls */}
           <div className="flex gap-2">
-            <Button
-              onClick={onUndo}
-              variant="outline"
-              size="sm"
-              className="pointer-events-auto border-border hover:bg-accent/50 transition-all duration-300"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={onClear}
-              variant="outline"
-              size="sm"
-              className="pointer-events-auto border-border hover:bg-destructive/20 hover:text-destructive transition-all duration-300"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label="Undo last stroke"
+                  onClick={onUndo}
+                  variant="outline"
+                  size="sm"
+                  className="pointer-events-auto border-border hover:bg-accent/50 transition-all duration-300"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Undo last stroke</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label="Clear canvas"
+                  onClick={onClear}
+                  variant="outline"
+                  size="sm"
+                  className="pointer-events-auto border-border hover:bg-destructive/20 hover:text-destructive transition-all duration-300"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Clear canvas</TooltipContent>
+            </Tooltip>
           </div>
         </div>
-      </Card>
+        </Card>
 
-      {/* Volume and Brush Controls */}
-      <Card className="p-3 bg-card/60 backdrop-blur-md border-border/50 shadow-xl opacity-60 pointer-events-none">
+        {/* Volume and Brush Controls */}
+        <Card className="p-3 bg-card/70 backdrop-blur-md border-border/50 shadow-xl opacity-80 hover:opacity-100 transition-opacity pointer-events-none">
         <div className="pointer-events-none space-y-3">
           {/* Volume Control */}
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground font-medium min-w-[40px]">VOL</span>
             <Slider
+              aria-label="Volume"
               value={[volume * 100]}
               onValueChange={(value) => onVolumeChange(value[0] / 100)}
               max={100}
@@ -160,6 +208,7 @@ export const Controls = ({
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground font-medium min-w-[40px]">SIZE</span>
             <Slider
+              aria-label="Brush size"
               value={[brushSize]}
               onValueChange={(value) => onBrushSizeChange(value[0])}
               min={5}
@@ -173,19 +222,25 @@ export const Controls = ({
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground font-medium min-w-[40px]">GRID</span>
             <Switch
+              aria-label="Toggle pitch grid"
               className="pointer-events-auto"
               checked={gridOn}
-              onCheckedChange={() => onGridToggle(!gridOn)}
+              onCheckedChange={onGridToggle}
             />
           </div>
         </div>
-      </Card>
+        </Card>
 
-      {/* Tempo Sync + Subdivision Controls */}
-      <Card className="p-3 bg-card/60 backdrop-blur-md border-border/50 shadow-xl opacity-60 pointer-events-none">
+        {/* Tempo Sync + Subdivision Controls */}
+        <Card className="p-3 bg-card/70 backdrop-blur-md border-border/50 shadow-xl opacity-80 hover:opacity-100 transition-opacity pointer-events-none">
         <div className="pointer-events-none flex items-center gap-4">
           <span className="text-xs text-muted-foreground font-medium">Sync</span>
-          <Switch className="pointer-events-auto" checked={tempoSyncOn} onCheckedChange={onTempoSyncChange} />
+          <Switch
+            aria-label="Toggle tempo sync"
+            className="pointer-events-auto"
+            checked={tempoSyncOn}
+            onCheckedChange={onTempoSyncChange}
+          />
           <Input
             type="number"
             value={bpm}
@@ -201,6 +256,7 @@ export const Controls = ({
             max={300}
             step={1}
             inputMode="numeric"
+            aria-label="Tempo in BPM"
             className="pointer-events-auto w-20"
           />
           <span className="text-xs text-muted-foreground">BPM</span>
@@ -209,6 +265,7 @@ export const Controls = ({
             value={grainSub}
             onChange={e => onGrainSubChange(Number(e.target.value))}
             className="pointer-events-auto bg-background border border-input rounded-md p-1 text-sm"
+            aria-label="Grain subdivision"
           >
             {[1,2,4,8,16,32].map(val => (
               <option key={val} value={val}>{val}</option>
@@ -219,13 +276,15 @@ export const Controls = ({
             value={delaySub}
             onChange={e => onDelaySubChange(Number(e.target.value))}
             className="pointer-events-auto bg-background border border-input rounded-md p-1 text-sm"
+            aria-label="Delay subdivision"
           >
             {[1,2,4,8,16,32].map(val => (
               <option key={val} value={val}>{val}</option>
             ))}
           </select>
         </div>
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </TooltipProvider>
   );
 };

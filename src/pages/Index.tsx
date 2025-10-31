@@ -1,22 +1,30 @@
-import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
-import { DrawingCanvas } from '@/components/DrawingCanvas';
-import { Controls } from '@/components/Controls';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ColorPalette } from '@/components/ColorPalette';
-import { FileDropZone } from '@/components/FileDropZone';
-import { StatusDisplay } from '@/components/StatusDisplay';
-import { LiveVisualizer } from '@/components/LiveVisualizer';
-import { AudioEngine } from '@/components/AudioEngine';
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
-import { Info as InfoIcon, Keyboard, MousePointer, Sliders, Repeat, Mic, Upload } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
+import { DrawingCanvas } from "@/components/DrawingCanvas";
+import { Controls } from "@/components/Controls";
+import { Button } from "@/components/ui/button";
+import { ColorPalette } from "@/components/ColorPalette";
+import { FileDropZone } from "@/components/FileDropZone";
+import { StatusDisplay } from "@/components/StatusDisplay";
+import { LiveVisualizer } from "@/components/LiveVisualizer";
+import { AudioEngine } from "@/components/AudioEngine";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Info as InfoIcon, Keyboard, MousePointer, Sliders, Repeat, Mic, Upload } from "lucide-react";
 
 const Index = () => {
   const audioEngineRef = useRef<AudioEngine>(new AudioEngine());
   const [isAudioInitialized, setIsAudioInitialized] = useState(false);
   const [hasAudioBuffer, setHasAudioBuffer] = useState(false);
-  const [activeColor, setActiveColor] = useState('electric-blue');
+  const [activeColor, setActiveColor] = useState("electric-blue");
   const [clearTrigger, setClearTrigger] = useState(0);
   const [undoTrigger, setUndoTrigger] = useState(0);
   const [showDropZone, setShowDropZone] = useState(true);
@@ -24,147 +32,163 @@ const Index = () => {
   const [brushSize, setBrushSize] = useState(15);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
-  // Tempo sync state
   const [tempoSyncOn, setTempoSyncOn] = useState(false);
   const [bpm, setBpm] = useState(120);
-  // Grain and delay subdivisions
   const [grainSub, setGrainSub] = useState(4);
   const [delaySub, setDelaySub] = useState(2);
-  // Grid toggle state
   const [showGrid, setShowGrid] = useState(true);
-  const defaultBrush = 15;
 
-  // Update AudioEngine with tempo sync toggle and BPM changes
   useEffect(() => {
     audioEngineRef.current.toggleTempoSync(tempoSyncOn);
   }, [tempoSyncOn]);
+
   useEffect(() => {
     audioEngineRef.current.setBPM(bpm);
   }, [bpm]);
-  // Update subdivisions directly (never zero)
+
   useEffect(() => {
     audioEngineRef.current.setGrainSubdivision(grainSub);
   }, [grainSub]);
+
   useEffect(() => {
     audioEngineRef.current.setDelaySubdivision(delaySub);
   }, [delaySub]);
 
-  // Keyboard shortcuts: 1-6 colors, ArrowUp/Down brush size, R toggle recording
   useEffect(() => {
-    const colorList = ['electric-blue','neon-green','hot-pink','cyber-orange','violet-glow','reverse-grain'];
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip shortcuts when typing into input fields
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-      const key = e.key;
-      if (key >= '1' && key <= '6') {
-        const idx = parseInt(key, 10) - 1;
-        setActiveColor(colorList[idx]);
-        e.preventDefault();
-      } else if (key === 'ArrowUp') {
-        setBrushSize(prev => prev + 1);
-        e.preventDefault();
-      } else if (key === 'ArrowDown') {
-        setBrushSize(prev => Math.max(1, prev - 1));
-        e.preventDefault();
-      } else if (key === 'r' || key === 'R') {
-        if (!isRecording) {
-          handleStartRecording();
-        } else {
-          handleStopRecording();
-        }
-        e.preventDefault();
-      } else if (key === 'u' || key === 'U') {
-        handleUndo();
-        e.preventDefault();
-      } else if (key === 'c' || key === 'C') {
-        handleClear();
-        e.preventDefault();
-      }
+    const engine = audioEngineRef.current;
+    return () => {
+      engine.dispose().catch(error => {
+        console.warn("Failed to dispose audio engine:", error);
+      });
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isRecording]);
+  }, []);
 
-
-  const handleFileLoad = async (file: File) => {
-    // Initialize audio engine on first file load if not already
+  const handleFileLoad = useCallback(async (file: File) => {
     if (!isAudioInitialized) {
       const initSuccess = await audioEngineRef.current.initialize();
       if (initSuccess) {
         setIsAudioInitialized(true);
-        toast.success('Audio engine ready! Load a sample to begin.');
+        toast.success("Audio engine ready! Load a sample to begin.");
       } else {
-        toast.error('Failed to initialize audio. Please check browser compatibility.');
+        toast.error("Failed to initialize audio. Please check browser compatibility.");
         return;
       }
     }
+
     const success = await audioEngineRef.current.loadAudioFile(file);
     if (success) {
       setHasAudioBuffer(true);
       setShowDropZone(false);
-      // Auto-start audio playback
       audioEngineRef.current.start();
       toast.success(`Loaded: ${file.name}. Draw to create sound! Different colors = different effects.`);
     } else {
-      toast.error('Failed to load audio file. Please try a different format.');
+      toast.error("Failed to load audio file. Please try a different format.");
     }
-  };
+  }, [isAudioInitialized]);
 
-
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setClearTrigger(prev => prev + 1);
-    toast.info('Canvas cleared.');
-  };
+    toast.info("Canvas cleared.");
+  }, []);
 
-  const handleUndo = () => {
-    // Trigger undo of last stroke
+  const handleUndo = useCallback(() => {
     setUndoTrigger(prev => prev + 1);
-    toast.info('Last stroke undone.');
-  };
+    toast.info("Last stroke undone.");
+  }, []);
 
-  const handleVolumeChange = (newVolume: number) => {
+  const handleVolumeChange = useCallback((newVolume: number) => {
     setVolume(newVolume);
     audioEngineRef.current.setVolume(newVolume);
-  };
+  }, []);
 
-  const handleStartRecording = () => {
+  const handleStartRecording = useCallback(() => {
     const success = audioEngineRef.current.startRecording();
     if (success) {
+      setRecordingBlob(null);
       setIsRecording(true);
-      toast.success('Recording started! Draw and your sounds will be captured.');
+      toast.success("Recording started! Draw and your sounds will be captured.");
     } else {
-      toast.error('Failed to start recording. Please try again.');
+      toast.error("Failed to start recording. Please try again.");
     }
-  };
+  }, []);
 
-  const handleStopRecording = async () => {
+  const handleStopRecording = useCallback(async () => {
+    setIsRecording(false);
     const blob = await audioEngineRef.current.stopRecording();
     if (blob) {
-      setIsRecording(false);
       setRecordingBlob(blob);
-      // Create download link
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `draw-your-sound-${Date.now()}.wav`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success('Recording saved! File downloaded.');
+      toast.success("Recording saved! Use the download button to grab it again.");
     } else {
-      toast.error('Failed to save recording.');
+      toast.error("Failed to save recording.");
     }
-  };
+  }, []);
 
-  // Drag and drop for the entire window
+  const handleDownloadRecording = useCallback(() => {
+    if (!recordingBlob) {
+      toast.info("No recording available yet.");
+      return;
+    }
+    const url = URL.createObjectURL(recordingBlob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `draw-your-sound-${Date.now()}.wav`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Recording downloaded.");
+  }, [recordingBlob]);
+
+  useEffect(() => {
+    const colorList = ["electric-blue","neon-green","hot-pink","cyber-orange","violet-glow","reverse-grain"];
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      const key = e.key;
+      if (key >= "1" && key <= "6") {
+        const idx = parseInt(key, 10) - 1;
+        setActiveColor(colorList[idx]);
+        e.preventDefault();
+      } else if (key === "ArrowUp") {
+        setBrushSize(prev => prev + 1);
+        e.preventDefault();
+      } else if (key === "ArrowDown") {
+        setBrushSize(prev => Math.max(1, prev - 1));
+        e.preventDefault();
+      } else if (key === "r" || key === "R") {
+        if (!isRecording) {
+          handleStartRecording();
+        } else {
+          handleStopRecording();
+        }
+        e.preventDefault();
+      } else if (key === "u" || key === "U") {
+        handleUndo();
+        e.preventDefault();
+      } else if (key === "c" || key === "C") {
+        handleClear();
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleStartRecording, handleStopRecording, handleUndo, handleClear, isRecording]);
+
   useEffect(() => {
     const handleWindowDrop = (event: DragEvent) => {
       event.preventDefault();
       const files = Array.from(event.dataTransfer?.files || []);
-      const audioFile = files.find(file => file.type.startsWith('audio/'));
-      
+      const audioFile = files.find(file => file.type.startsWith("audio/"));
+
       if (audioFile) {
         handleFileLoad(audioFile);
       }
@@ -174,14 +198,14 @@ const Index = () => {
       event.preventDefault();
     };
 
-    window.addEventListener('drop', handleWindowDrop);
-    window.addEventListener('dragover', handleWindowDragOver);
+    window.addEventListener("drop", handleWindowDrop);
+    window.addEventListener("dragover", handleWindowDragOver);
 
     return () => {
-      window.removeEventListener('drop', handleWindowDrop);
-      window.removeEventListener('dragover', handleWindowDragOver);
+      window.removeEventListener("drop", handleWindowDrop);
+      window.removeEventListener("dragover", handleWindowDragOver);
     };
-  }, []);
+  }, [handleFileLoad]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-background">
@@ -194,7 +218,7 @@ const Index = () => {
         brushSize={brushSize}
         showGrid={showGrid}
       />
-      
+
       {/* UI Overlay */}
       <div className="relative z-10 pointer-events-none">
         <Controls
@@ -209,6 +233,8 @@ const Index = () => {
           isRecording={isRecording}
           onStartRecording={handleStartRecording}
           onStopRecording={handleStopRecording}
+          onDownloadRecording={handleDownloadRecording}
+          hasRecording={Boolean(recordingBlob)}
           tempoSyncOn={tempoSyncOn}
           onTempoSyncChange={setTempoSyncOn}
           bpm={bpm}
@@ -237,6 +263,11 @@ const Index = () => {
         brushSize={brushSize}
         activeColor={activeColor}
         isVisible={hasAudioBuffer && !showDropZone}
+        isRecording={isRecording}
+        volume={volume}
+        tempoSyncOn={tempoSyncOn}
+        bpm={bpm}
+        gridOn={showGrid}
       />
       {/* Live audio spectrum visualizer */}
       {hasAudioBuffer && !showDropZone && (
@@ -299,7 +330,7 @@ const Index = () => {
                     <Mic className="w-6 h-6 text-primary" />
                     <div>
                       <h4 className="font-semibold">Recording</h4>
-                      <p className="text-sm text-muted-foreground">Click mic button or press R to record; exports save as WAV files</p>
+                      <p className="text-sm text-muted-foreground">Click mic button or press R to record; use the download icon to grab the latest take as a WAV file</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">

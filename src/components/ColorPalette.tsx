@@ -18,8 +18,8 @@ const colors = [
 
 export const ColorPalette = ({ activeColor, onColorChange }: ColorPaletteProps) => {
   return (
-      <Card className="fixed top-4 right-4 p-4 bg-card/80 backdrop-blur-md border-border/50 shadow-2xl z-10 pointer-events-none">
-      <div className="pointer-events-auto space-y-3">
+    <Card className="fixed top-4 right-4 p-4 bg-card/80 backdrop-blur-md border-border/50 shadow-2xl z-10 pointer-events-none">
+      <div className="space-y-3 pointer-events-none">
         <h3 className="text-sm font-semibold text-foreground/80 mb-3">Sound Colors</h3>
         <div className="grid gap-2">
           {colors.map((color) => (
@@ -27,7 +27,7 @@ export const ColorPalette = ({ activeColor, onColorChange }: ColorPaletteProps) 
               key={color.name}
               onClick={() => onColorChange(color.name)}
               className={cn(
-                "w-full justify-start text-left h-auto p-3 transition-all duration-300",
+                "w-full justify-start text-left h-auto p-3 transition-all duration-300 pointer-events-auto",
                 "border border-border/50 hover:border-border",
                 activeColor === color.name 
                   ? "bg-accent text-white shadow-[var(--glow-accent)] scale-105" 

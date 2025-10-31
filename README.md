@@ -1,73 +1,54 @@
-# Welcome to your Lovable project
+# Paint Sonic Strokes
 
-## Project info
+Paint Sonic Strokes is an interactive granular-synthesis playground where drawing gestures transform into evolving audio textures. Sketch on the canvas, sculpt grains with color-coded effects, and capture the results as studio-friendly WAV files.
 
-**URL**: https://lovable.dev/projects/dfe83063-8e55-41b6-8aff-98d15d5c88ae
+The app icon now reflects this idea with a pulsing gradient waveform tucked inside a dark tile. You can find the source at `public/favicon.svg` if you want to tweak the palette or geometry.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- Granular engine powered by Web Audio API, including reverse-grain playback and tempo-synced delay.
+- Pressure-sensitive style controls that map stroke motion to density, pitch, and spatial effects.
+- Keyboard shortcuts for fast color switching, brush sizing, undo, clear, and recording toggles.
+- AudioWorklet-based recorder that exports high-quality WAV captures of your performance.
+- Live analyser visualizer plus grid overlay to help line up musical gestures.
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/dfe83063-8e55-41b6-8aff-98d15d5c88ae) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Getting Started
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+git clone <repo-url>
+cd paint-sonic-strokes
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The development server runs on Vite. Once it boots, open the printed URL (typically http://localhost:5173) and load an audio file or drag one directly onto the canvas.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Available Scripts
 
-**Use GitHub Codespaces**
+- `npm run dev` – start the local dev server with hot reload.
+- `npm run build` – produce the optimized production bundle.
+- `npm run preview` – serve the production build locally for smoke tests.
+- `npm run lint` – lint the project with the shared ESLint configuration.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Audio & Browser Notes
 
-## What technologies are used for this project?
+- AudioWorklets are required for low-latency recording. Safari 16.4+ and all modern Chromium/Firefox builds are supported.
+- Some mobile browsers suspend audio contexts until the user taps; the app prompts you to interact if initialization fails.
+- If you need a fallback for worklet-free environments, start in free-play mode and skip the record feature.
 
-This project is built with:
+## Project Structure
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```
+src/
+	components/     # UI building blocks and audio visualizers
+	pages/          # Top-level routed views
+	hooks/          # Shared React hooks
+	lib/            # Utility helpers
+public/
+	favicon.svg     # Gradient waveform app icon
+	recorder-worklet.js
+```
 
-## How can I deploy this project?
+## Contributing
 
-Simply open [Lovable](https://lovable.dev/projects/dfe83063-8e55-41b6-8aff-98d15d5c88ae) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Issues and pull requests are welcome! If you add new audio capabilities, consider updating the README and the icon so visual cues stay in sync with the sonic experience.

@@ -11,6 +11,12 @@ interface DrawingCanvasProps {
 }
 
 export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, brushSize = 15, showGrid }: DrawingCanvasProps) => {
+  const STATIONARY_BASE_INTERVAL = 110;
+  const STATIONARY_VARIANCE = 65;
+  const STATIONARY_MIN_SPEED = 18;
+  const MIN_DENSITY = 0.35;
+  const SPEED_TO_DENSITY = 0.09;
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Spatial minimap for grain density overview
   const minimapRef = useRef<HTMLCanvasElement>(null);
@@ -23,6 +29,10 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
   const [strokes, setStrokes] = useState<DrawPoint[][]>([]);
   const [currentStroke, setCurrentStroke] = useState<DrawPoint[]>([]);
   const lastPointRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastDrawPointRef = useRef<DrawPoint | null>(null);
+  const stationaryLoopRef = useRef<number | null>(null);
+  const lastStationaryEmitRef = useRef<number>(0);
+  const isDrawingRef = useRef(false);
 
   // Pitch grid drawing utilities
   const semitoneSteps = 12;
@@ -54,7 +64,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     ctx.restore();
   }, []);
   // Snap Y coordinate to nearest semitone line
-  const getSnappedY = (y: number): number => {
+  const getSnappedY = useCallback((y: number): number => {
     const canvas = canvasRef.current;
     if (!canvas) return y;
     const height = canvas.height;
@@ -62,9 +72,9 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     const stepHeight = height / (2 * semitoneSteps);
     const semitoneIndex = Math.round((centerY - y) / stepHeight);
     return centerY - semitoneIndex * stepHeight;
-  };
+  }, []);
 
-  const calculateSpeed = (currentPoint: { x: number; y: number }, timestamp: number): number => {
+  const calculateSpeed = useCallback((currentPoint: { x: number; y: number }, timestamp: number): number => {
     if (!lastPointRef.current) return 0;
     
     const dx = currentPoint.x - lastPointRef.current.x;
@@ -73,32 +83,38 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     const timeDelta = timestamp - lastPointRef.current.time;
     
     return timeDelta > 0 ? distance / timeDelta : 0;
-  };
+  }, []);
 
-  const createDrawPoint = (x: number, y: number): DrawPoint => {
+  const createDrawPoint = useCallback((x: number, y: number, options?: { color?: string; speedOverride?: number }): DrawPoint => {
     const timestamp = Date.now();
-    const speed = calculateSpeed({ x, y }, timestamp);
-    
-    lastPointRef.current = { x, y, time: timestamp };
-    
-    return { x, y, speed, color: activeColor, timestamp, brushSize };
-  };
+    const speed = options?.speedOverride ?? calculateSpeed({ x, y }, timestamp);
+    const color = options?.color ?? activeColor;
 
-  const triggerGrain = (point: DrawPoint) => {
+    lastPointRef.current = { x, y, time: timestamp };
+
+    const drawPoint: DrawPoint = { x, y, speed, color, timestamp, brushSize };
+    lastDrawPointRef.current = drawPoint;
+    return drawPoint;
+  }, [activeColor, brushSize, calculateSpeed]);
+
+  const triggerGrain = useCallback((point: DrawPoint) => {
     if (!audioEngine.isAudioPlaying() || !audioEngine.getAudioBuffer()) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const density = Math.max(MIN_DENSITY, Math.min(point.speed * SPEED_TO_DENSITY, 10));
+
     const params: GrainParams = {
-      position: point.x / canvas.width, // X maps to buffer position
-      pitch: 1 - (point.y / canvas.height), // Y maps to pitch (inverted)
-      density: Math.min(point.speed * 0.1, 10), // Speed maps to density
+      position: point.x / canvas.width,
+      pitch: 1 - (point.y / canvas.height),
+      density,
       color: point.color,
     };
 
     audioEngine.createGrain(params, canvas.width, canvas.height, brushSize);
-    // Draw pulse on spatial minimap
+    lastStationaryEmitRef.current = performance.now();
+
     const mctx = minimapCtxRef.current;
     if (mctx) {
       const xNorm = (point.x / canvas.width) * minimapWidth;
@@ -108,9 +124,21 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
       mctx.arc(xNorm, yNorm, 2, 0, Math.PI * 2);
       mctx.fill();
     }
-  };
+  }, [audioEngine, brushSize]);
 
-  const drawLine = (fromPoint: DrawPoint, toPoint: DrawPoint) => {
+  const getColorHSL = useCallback((colorName: string): string => {
+    const colorMap: Record<string, string> = {
+      'electric-blue': 'hsl(193, 100%, 50%)',
+      'neon-green': 'hsl(120, 100%, 50%)',
+      'hot-pink': 'hsl(320, 100%, 60%)',
+      'cyber-orange': 'hsl(30, 100%, 60%)',
+      'violet-glow': 'hsl(280, 100%, 70%)',
+      'reverse-grain': 'hsl(60, 100%, 70%)', // Neon yellow for reverse-grain
+    };
+    return colorMap[colorName] || colorMap['electric-blue'];
+  }, []);
+
+  const drawLine = useCallback((fromPoint: DrawPoint, toPoint: DrawPoint) => {
     const context = contextRef.current;
     if (!context) return;
 
@@ -130,7 +158,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     context.moveTo(fromPoint.x, fromPoint.y);
     context.lineTo(toPoint.x, toPoint.y);
     context.stroke();
-  };
+  }, [getColorHSL]);
 
 
   const getEventPoint = (event: React.MouseEvent | React.TouchEvent) => {
@@ -144,25 +172,72 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
   };
 
   // Native pointer start handler with optional Y snapping
+  const stopStationaryLoop = useCallback(() => {
+    if (stationaryLoopRef.current !== null) {
+      cancelAnimationFrame(stationaryLoopRef.current);
+      stationaryLoopRef.current = null;
+    }
+  }, []);
+
+  const startStationaryLoop = useCallback(() => {
+    if (stationaryLoopRef.current !== null) return;
+
+    const tick = () => {
+      if (!isDrawingRef.current) {
+        stationaryLoopRef.current = null;
+        return;
+      }
+
+      const lastPoint = lastDrawPointRef.current;
+      if (lastPoint) {
+        const now = performance.now();
+        const interval = STATIONARY_BASE_INTERVAL + Math.random() * STATIONARY_VARIANCE;
+        if (now - lastStationaryEmitRef.current >= interval) {
+          const stationaryPoint = createDrawPoint(lastPoint.x, lastPoint.y, {
+            color: lastPoint.color,
+            speedOverride: Math.max(lastPoint.speed, STATIONARY_MIN_SPEED) * (0.95 + Math.random() * 0.1),
+          });
+          triggerGrain(stationaryPoint);
+        }
+      }
+
+      stationaryLoopRef.current = requestAnimationFrame(tick);
+    };
+
+    lastStationaryEmitRef.current = performance.now();
+    stationaryLoopRef.current = requestAnimationFrame(tick);
+  }, [createDrawPoint, triggerGrain]);
+
   const handlePointerDown = useCallback((e: PointerEvent) => {
     e.preventDefault();
-    const canvas = canvasRef.current; if (!canvas) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (canvas.setPointerCapture) {
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch (err) {
+        /* no-op: pointer capture unsupported */
+      }
+    }
     const rect = canvas.getBoundingClientRect();
     const rawX = e.clientX - rect.left;
     const rawY = e.clientY - rect.top;
     const x = rawX;
     const y = e.shiftKey ? getSnappedY(rawY) : rawY;
     setIsDrawing(true);
+    isDrawingRef.current = true;
     const drawPoint = createDrawPoint(x, y);
     setCurrentStroke([drawPoint]);
     triggerGrain(drawPoint);
-  }, [activeColor, getSnappedY]);
+    startStationaryLoop();
+  }, [createDrawPoint, getSnappedY, startStationaryLoop, triggerGrain]);
 
   // Native pointer move handler with optional Y snapping
   const handlePointerMove = useCallback((e: PointerEvent) => {
-    e.preventDefault();
     if (!isDrawing) return;
-    const canvas = canvasRef.current; if (!canvas) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const rawX = e.clientX - rect.left;
     const rawY = e.clientY - rect.top;
@@ -182,16 +257,48 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
       return [...prev, drawPoint];
     });
     triggerGrain(drawPoint);
-  }, [isDrawing, activeColor, getSnappedY]);
+  }, [isDrawing, createDrawPoint, drawLine, getSnappedY, triggerGrain]);
 
   // Native pointer up handler
-  const handlePointerUp = useCallback(() => {
-    if (!isDrawing) return;
+  const handlePointerUp = useCallback((e: PointerEvent) => {
+    const canvas = canvasRef.current;
+    if (canvas?.releasePointerCapture) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        /* no-op: already released */
+      }
+    }
+    stopStationaryLoop();
+    isDrawingRef.current = false;
+    if (!isDrawing) {
+      lastPointRef.current = null;
+      lastDrawPointRef.current = null;
+      return;
+    }
     setIsDrawing(false);
     setStrokes(prev => [...prev, currentStroke]);
     setCurrentStroke([]);
     lastPointRef.current = null;
-  }, [isDrawing, currentStroke]);
+    lastDrawPointRef.current = null;
+  }, [currentStroke, isDrawing, stopStationaryLoop]);
+
+  const handlePointerCancel = useCallback((e: PointerEvent) => {
+    const canvas = canvasRef.current;
+    if (canvas?.releasePointerCapture) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        /* no-op: already released */
+      }
+    }
+    stopStationaryLoop();
+    isDrawingRef.current = false;
+    setIsDrawing(false);
+    setCurrentStroke([]);
+    lastPointRef.current = null;
+    lastDrawPointRef.current = null;
+  }, [stopStationaryLoop]);
 
   // Attach global pointer events to allow drawing from UI overlays
   useEffect(() => {
@@ -200,12 +307,14 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointermove', handlePointerMove);
     canvas.addEventListener('pointerup', handlePointerUp);
+    canvas.addEventListener('pointercancel', handlePointerCancel);
     return () => {
       canvas.removeEventListener('pointerdown', handlePointerDown);
       canvas.removeEventListener('pointermove', handlePointerMove);
       canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [handlePointerDown, handlePointerMove, handlePointerUp]);
+  }, [handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel]);
 
   // Animation loop for visual effects
   useEffect(() => {
@@ -241,18 +350,6 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     fade();
   }, []);
 
-  const getColorHSL = (colorName: string): string => {
-    const colorMap: Record<string, string> = {
-      'electric-blue': 'hsl(193, 100%, 50%)',
-      'neon-green': 'hsl(120, 100%, 50%)',
-      'hot-pink': 'hsl(320, 100%, 60%)',
-      'cyber-orange': 'hsl(30, 100%, 60%)',
-      'violet-glow': 'hsl(280, 100%, 70%)',
-      'reverse-grain': 'hsl(60, 100%, 70%)', // Neon yellow for reverse-grain
-    };
-    return colorMap[colorName] || colorMap['electric-blue'];
-  };
-
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const ctx = contextRef.current;
@@ -264,7 +361,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
         drawLine(stroke[i - 1], stroke[i]);
       }
     });
-  }, [drawPitchGrid, strokes]);
+  }, [drawPitchGrid, strokes, showGrid]);
 
   // Resize canvas and redraw grid & strokes on window resize
   useEffect(() => {
@@ -292,7 +389,7 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
       setCurrentStroke([]);
       redrawCanvas();
     }
-  }, [onClear]);
+  }, [onClear, redrawCanvas]);
 
   // Undo last stroke effect with grid redraw
   useEffect(() => {
@@ -300,7 +397,15 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
       setStrokes(prev => prev.slice(0, -1));
       redrawCanvas();
     }
-  }, [undoTrigger]);
+  }, [undoTrigger, redrawCanvas]);
+
+  useEffect(() => {
+    redrawCanvas();
+  }, [showGrid, redrawCanvas]);
+
+  useEffect(() => () => {
+    stopStationaryLoop();
+  }, [stopStationaryLoop]);
 
 
   return (
