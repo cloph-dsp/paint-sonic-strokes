@@ -2,8 +2,6 @@
 
 Paint Sonic Strokes is an interactive granular-synthesis playground where drawing gestures transform into evolving audio textures. Sketch on the canvas, sculpt grains with color-coded effects, and capture the results as studio-friendly WAV files.
 
-The app icon now reflects this idea with a pulsing gradient waveform tucked inside a dark tile. You can find the source at `public/favicon.svg` if you want to tweak the palette or geometry.
-
 ## Features
 
 - Granular engine powered by Web Audio API, including reverse-grain playback and tempo-synced delay.
