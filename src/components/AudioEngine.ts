@@ -143,9 +143,7 @@ export class AudioEngine {
       return;
     }
     if (!this.recorderModuleLoaded) {
-  const basePath = import.meta.env.BASE_URL ?? "/";
-  const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
-  const modulePath = `${normalizedBase}recorder-worklet.js`;
+      const modulePath = this.resolveRecorderModulePath();
       await this.audioContext.audioWorklet.addModule(modulePath);
       this.recorderModuleLoaded = true;
     }
@@ -181,6 +179,23 @@ export class AudioEngine {
     }
     this.recordedChannelCount = channelCount;
     this.recordedBuffers = Array.from({ length: channelCount }, () => []);
+  }
+
+  private resolveRecorderModulePath(): string {
+    let basePath = import.meta.env.BASE_URL ?? "/";
+    if (typeof window !== "undefined" && (basePath === "/" || basePath === "./")) {
+      const path = window.location.pathname;
+      if (path && path !== "/") {
+        const segments = path.split("/").filter(Boolean);
+        if (segments.length > 0) {
+          basePath = `/${segments[0]}/`;
+        }
+      }
+    }
+    if (!basePath.endsWith("/")) {
+      basePath += "/";
+    }
+    return `${basePath}recorder-worklet.js`;
   }
 
   private createSaturationCurve(amount: number): number[] {
