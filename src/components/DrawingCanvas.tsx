@@ -212,6 +212,21 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
+    
+    // Ensure canvas context is properly initialized
+    const ctx = contextRef.current;
+    if (!ctx) {
+      const newCtx = canvas.getContext('2d');
+      if (newCtx) {
+        newCtx.lineCap = 'round';
+        newCtx.lineJoin = 'round';
+        newCtx.globalCompositeOperation = 'screen';
+        contextRef.current = newCtx;
+      } else {
+        return;
+      }
+    }
+    
     if (canvas.setPointerCapture) {
       try {
         canvas.setPointerCapture(e.pointerId);
@@ -354,42 +369,95 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     const canvas = canvasRef.current;
     const ctx = contextRef.current;
     if (!canvas || !ctx) return;
+    
+    // Clear the canvas completely
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Reset canvas context properties to default state
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = 'screen';
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    
+    // Draw grid if enabled
     if (showGrid) drawPitchGrid();
+    
+    // Redraw all strokes
     strokes.forEach(stroke => {
       for (let i = 1; i < stroke.length; i++) {
         drawLine(stroke[i - 1], stroke[i]);
       }
     });
-  }, [drawPitchGrid, strokes, showGrid]);
+  }, [drawPitchGrid, drawLine, strokes, showGrid]);
 
   // Resize canvas and redraw grid & strokes on window resize
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
+    
     const handleResize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      
+      // Ensure proper canvas context initialization
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.globalCompositeOperation = 'screen';
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+      
       contextRef.current = ctx;
       redrawCanvas();
     };
+    
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [redrawCanvas]);
 
-  // Clear canvas effect with grid redraw
+  // Clear canvas effect with proper state reset
   useEffect(() => {
     if (onClear) {
+      // Stop any ongoing drawing operations
+      stopStationaryLoop();
+      isDrawingRef.current = false;
+      setIsDrawing(false);
+      
+      // Clear drawing state
       setStrokes([]);
       setCurrentStroke([]);
-      redrawCanvas();
+      
+      // Reset drawing references
+      lastPointRef.current = null;
+      lastDrawPointRef.current = null;
+      
+      // Clear and redraw canvas
+      const canvas = canvasRef.current;
+      const ctx = contextRef.current;
+      if (canvas && ctx) {
+        // Complete canvas reset
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = 'screen';
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+        
+        // Redraw grid if enabled
+        if (showGrid) {
+          drawPitchGrid();
+        }
+      }
+      
+      // Clear minimap
+      const mctx = minimapCtxRef.current;
+      if (mctx) {
+        mctx.clearRect(0, 0, minimapWidth, minimapHeight);
+      }
     }
-  }, [onClear, redrawCanvas]);
+  }, [onClear, showGrid, drawPitchGrid, stopStationaryLoop]);
 
   // Undo last stroke effect with grid redraw
   useEffect(() => {
