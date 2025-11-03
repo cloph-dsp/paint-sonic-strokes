@@ -459,13 +459,34 @@ export const DrawingCanvas = ({ audioEngine, activeColor, onClear, undoTrigger, 
     }
   }, [onClear, showGrid, drawPitchGrid, stopStationaryLoop]);
 
-  // Undo last stroke effect with grid redraw
+  // Undo last stroke: remove last committed stroke, preserve canvas/context state
   useEffect(() => {
     if (undoTrigger) {
-      setStrokes(prev => prev.slice(0, -1));
-      redrawCanvas();
+      // Stop any stationary emission loop so we don't emit while updating state
+      stopStationaryLoop();
+      // Ensure drawing flags are in a known-good state
+      isDrawingRef.current = false;
+      setIsDrawing(false);
+
+      // Remove the last stroke
+      setStrokes(prev => {
+        if (prev.length === 0) return prev;
+        const newStrokes = prev.slice(0, -1);
+
+        // Redraw on next frame to ensure state has updated and context is ready
+        requestAnimationFrame(() => {
+          redrawCanvas();
+        });
+
+        return newStrokes;
+      });
+
+      // Reset any transient draw references so subsequent drawing starts clean
+      lastPointRef.current = null;
+      lastDrawPointRef.current = null;
+      console.log('Undo triggered');
     }
-  }, [undoTrigger, redrawCanvas]);
+  }, [undoTrigger, showGrid, drawPitchGrid, stopStationaryLoop]); // Updated dependencies to same with onClear
 
   useEffect(() => {
     redrawCanvas();
